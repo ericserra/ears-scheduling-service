@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/.vs
+**/.idea
+.git
+.github
+docs
+.env
+.env.*
+!.env.example
+README.md

@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ears-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ears}
+      POSTGRES_USER: ${POSTGRES_USER:-ears}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/backup:/backup
+    ports:
+      - "127.0.0.1:5432:5432"   # exposto apenas em loopback
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ears} -d ${POSTGRES_DB:-ears}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: ears-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "127.0.0.1:8080:8080"   # o TLS termina no proxy reverso
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres-data:

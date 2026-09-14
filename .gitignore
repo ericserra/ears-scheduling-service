@@ -1,0 +1,63 @@
+## Build
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Bb]uild[Ll]og.*
+*.binlog
+
+## Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*_i.c
+*_p.c
+*.ncb
+*.aps
+*.pch
+*.pdb
+*.cache
+*.tlog
+
+## Test results / coverage
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Segredos e ambiente
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+*.pfx
+*.p12
+secrets.json
+
+## Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Logs e temporários
+*.log
+*.tmp

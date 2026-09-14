@@ -1,0 +1,32 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.{cs,csx}]
+indent_size = 4
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_prefer_braces = when_multiline:suggestion
+dotnet_style_null_propagation = true:warning
+dotnet_style_coalesce_expression = true:warning
+
+# Nomeação: interfaces com I, membros privados com _
+dotnet_naming_rule.interfaces_com_i.severity = warning
+dotnet_naming_rule.interfaces_com_i.symbols = interfaces
+dotnet_naming_rule.interfaces_com_i.style = prefixo_i
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.prefixo_i.required_prefix = I
+dotnet_naming_style.prefixo_i.capitalization = pascal_case
+
+[*.{csproj,props,targets,json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
