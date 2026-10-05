@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ProcessarRespostaConfirmacaoUseCase>();
         services.AddScoped<EnviarConfirmacaoD1UseCase>();
         services.AddScoped<EnviarLembreteUseCase>();
+        services.AddScoped<SincronizarAgendaUseCase>();
 
         AddHttpClients(services, configuration);
         AddQuartz(services, configuration);
@@ -64,22 +65,15 @@ public static class DependencyInjection
             .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "AmplimedPacientes"))
             .AddPolicyHandler(PoliticasHttp.Timeout());
 
+        // O identificador da API de Agendamento vai no caminho da rota, montado
+        // pelo client. Só o token é cabeçalho.
         services.AddHttpClient<IAmplimedAgendamentoClient, AmplimedAgendamentoClient>(c =>
             {
                 c.BaseAddress = new Uri(amplimed.Agendamento.BaseUrl);
-                c.DefaultRequestHeaders.Add("X-authorization", amplimed.Agendamento.Token);
-                c.DefaultRequestHeaders.Add("X-identificador", amplimed.Agendamento.Identificador);
+                c.DefaultRequestHeaders.Add("x-authorization", amplimed.Agendamento.Token);
             })
             .AddPolicyHandler((sp, _) => PoliticasHttp.Retry(Logger(sp), "AmplimedAgendamento"))
             .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "AmplimedAgendamento"))
-            .AddPolicyHandler(PoliticasHttp.Timeout());
-
-        services.AddHttpClient<IAmplimedDadosClient, AmplimedDadosClient>(c =>
-            {
-                c.BaseAddress = new Uri(amplimed.Dados.BaseUrl);
-            })
-            .AddPolicyHandler((sp, _) => PoliticasHttp.Retry(Logger(sp), "AmplimedDados"))
-            .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "AmplimedDados"))
             .AddPolicyHandler(PoliticasHttp.Timeout());
 
         services.AddHttpClient<ISleekFlowClient, SleekFlowClient>(c =>
@@ -115,6 +109,14 @@ public static class DependencyInjection
                 .ForJob(lembrete)
                 .WithIdentity($"{nameof(LembreteJob)}-trigger")
                 .WithCronSchedule(automacao.CronLembrete, x => x.InTimeZone(fuso)));
+
+            // Polling da agenda: a Amplimed não oferece webhook nesta integração.
+            var sincronizacao = new JobKey(nameof(SincronizacaoAgendaJob));
+            q.AddJob<SincronizacaoAgendaJob>(o => o.WithIdentity(sincronizacao));
+            q.AddTrigger(t => t
+                .ForJob(sincronizacao)
+                .WithIdentity($"{nameof(SincronizacaoAgendaJob)}-trigger")
+                .WithCronSchedule(automacao.CronSincronizacaoAgenda, x => x.InTimeZone(fuso)));
 
             var outbox = new JobKey(nameof(OutboxDispatcherJob));
             q.AddJob<OutboxDispatcherJob>(o => o.WithIdentity(outbox));

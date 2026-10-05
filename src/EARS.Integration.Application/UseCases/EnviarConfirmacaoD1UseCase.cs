@@ -14,7 +14,7 @@ namespace EARS.Integration.Application.UseCases;
 /// </summary>
 public sealed class EnviarConfirmacaoD1UseCase(
     IAgendamentoRepository agendamentos,
-    IAmplimedAgendamentoClient agendamentoClient,
+    SincronizarAgendaUseCase sincronizarAgenda,
     ISleekFlowClient sleekFlow,
     IOptOutRepository optOut,
     IMensagemLogRepository logs,
@@ -84,22 +84,30 @@ public sealed class EnviarConfirmacaoD1UseCase(
     }
 
     /// <summary>
-    /// Cenário A: lê a agenda direto da Amplimed, cobrindo todos os canais.
-    /// Cenário B: cai no espelho local, cobrindo só o que foi marcado pelo WhatsApp.
+    /// Cenário A: concilia o espelho com a agenda da Amplimed antes de varrer,
+    /// de modo que o disparo cobre consultas marcadas por qualquer canal.
+    /// Cenário B: lê o espelho como está, cobrindo só o que veio pelo WhatsApp.
+    ///
+    /// Em ambos os casos a leitura é do espelho local: ele é o modelo de leitura
+    /// único, e a conciliação é o que o mantém fiel. Falha na conciliação degrada
+    /// para o espelho em vez de abortar o disparo — melhor confirmar o que se sabe
+    /// do que não confirmar nada.
     /// </summary>
     private async Task<IReadOnlyList<Agendamento>> ObterAgendamentosAsync(DateOnly dia, CancellationToken ct)
     {
         if (_opcoes.LeituraAgendaViaApi)
         {
-            var remotos = await agendamentoClient.ListarPorPeriodoAsync(dia, dia, ct);
-            if (remotos is not null)
+            try
             {
-                logger.LogInformation("Cenário A: {Total} agendamentos lidos da Amplimed para {Dia}.", remotos.Count, dia);
-                // A sincronização do espelho ocorre no repositório; aqui seguimos com a base local já atualizada.
+                var resultado = await sincronizarAgenda.ExecutarParaDiaAsync(dia, ct);
+                logger.LogInformation(
+                    "Cenário A: agenda de {Dia} conciliada ({Lidos} lidos, {Criados} novos).",
+                    dia, resultado.Lidos, resultado.Criados);
             }
-            else
+            catch (Exception ex)
             {
-                logger.LogWarning("Leitura de agenda indisponível na API; usando o espelho local (cenário B).");
+                logger.LogError(ex,
+                    "Conciliação da agenda de {Dia} falhou; seguindo com o espelho local.", dia);
             }
         }
 

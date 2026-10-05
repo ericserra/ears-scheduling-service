@@ -68,7 +68,9 @@ dotnet ef migrations add NomeDaMigracao \
 ```
 
 > A primeira migração ainda não foi gerada — rode o comando acima com o banco no ar
-> antes do primeiro deploy.
+> antes do primeiro deploy. O modelo mudou com a adaptação às APIs reais da
+> Amplimed (dois identificadores de agendamento, `codReferencia` do paciente),
+> então gere a migração depois dessa mudança, não antes.
 
 ## Configuração
 
@@ -83,7 +85,10 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `Automacao__CronLembrete` | `0 30 7 * * ?` | horário do lembrete único |
 | `Automacao__MaxHorariosOfertados` | `5` | opções mostradas ao paciente |
 | `Automacao__ExpiracaoConversa` | `06:00:00` | inatividade que encerra a conversa |
-| `Automacao__LeituraAgendaViaApi` | `false` | cenário A ou B da Cláusula 3ª — ver ADR 0002 |
+| `Automacao__LeituraAgendaViaApi` | `true` | cenário A ou B da Cláusula 3ª — ver ADR 0002 |
+| `Automacao__CronSincronizacaoAgenda` | `0 0/15 * * * ?` | polling da agenda (a Amplimed não tem webhook) |
+| `Automacao__DiasSincronizacaoAgenda` | `2` | janela do polling, contando hoje |
+| `Amplimed__Agendamento__Usuclin` | — | número da clínica; sem ele o cenário A não roda |
 
 ## Endpoints
 
@@ -94,6 +99,7 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `GET` | `/admin/agendamentos?dia=` | agendamentos do dia com status |
 | `GET` | `/admin/logs?pagina=` | trilha de auditoria de mensagens |
 | `POST` | `/admin/confirmacao/disparar` | dispara a varredura D-1 manualmente |
+| `POST` | `/admin/agenda/sincronizar?dia=` | força o polling da agenda da Amplimed |
 | `POST` | `/admin/opt-out?telefone=` | registra descadastro |
 | `GET` | `/admin/config` | parâmetros em vigor |
 
@@ -104,14 +110,34 @@ Os endpoints `/admin` exigem o cabeçalho `X-Api-Key`.
 - **[ADR 0001](docs/adr/0001-host-unico.md)** — API e worker no mesmo host.
   Consequência importante: **rodar em instância única** enquanto o Quartz usar store
   em memória, ou os jobs disparam em duplicidade.
-- **[ADR 0002](docs/adr/0002-leitura-de-agenda.md)** — os dois cenários de leitura de
-  agenda previstos na Cláusula 3ª, alternados por configuração.
+- **[ADR 0002](docs/adr/0002-leitura-de-agenda.md)** — a Cláusula 3ª, verificada:
+  `listar-agendamentos` e `alterar-status-agendamento` existem, então o **cenário A
+  é o padrão** e a confirmação cobre consultas marcadas por qualquer canal. O
+  cenário B virou degradação, não hipótese.
+- **[ADR 0003](docs/adr/0003-identificadores-de-agendamento.md)** — os dois
+  espaços de identificador de agendamento da Amplimed, e por que o espelho local
+  guarda ambos.
 
 ## Regras que não são óbvias no código
 
-- **Identificação de paciente usa CPF e telefone em conjunto.** Telefone isolado não
-  desambigua pacientes que compartilham o mesmo número — problema já enfrentado no
-  serviço GMC. A criação de cadastro só ocorre quando não há correspondência alguma.
+- **A Amplimed não oferece webhook nesta integração.** Agendamento marcado no
+  sistema da clínica só chega aqui por polling (`SincronizacaoAgendaJob`), e é o
+  polling que descobre o par `(usuclin, idAgendamento)` sem o qual não se grava
+  confirmação. Desligá-lo não degrada o serviço: quebra o Módulo 2.
+- **A identificação de paciente é por CPF, porque não existe busca por telefone.**
+  A API de Pacientes filtra por CPF, nome ou codReferencia. O telefone serve para
+  casar com o espelho local — e, isolado, não desambigua pacientes que compartilham
+  o mesmo número, problema já enfrentado no serviço GMC.
+- **O `codReferencia` é cunhado por nós e nunca reaproveitado.** Reusar o valor
+  para pacientes diferentes mescla cadastros silenciosamente; por isso ele é
+  derivado do Guid local (`ears-{guid}`).
+- **A listagem da agenda não devolve telefone.** Para avisar quem chegou pela
+  agenda da clínica é preciso buscar o celular por CPF na API de Pacientes. Sem CPF
+  ou sem celular, o agendamento fica para a recepção, com registro em log.
+- **Marcar exige o `idHorario`**, um token opaco de `listar-horarios` — não data e
+  hora. A revalidação antes de gravar compara o token, não o horário.
+- **Datas da Amplimed vêm sem fuso.** São hora da clínica; lidas como UTC, o
+  disparo D-1 cai no dia errado.
 - **Fora da janela de 24h da Meta só se envia template aprovado.** O disparo D-1 é
   sempre template; texto livre só dentro da janela.
 - **O template não menciona especialidade nem motivo da consulta** (Cláusula 13ª, § 2º):

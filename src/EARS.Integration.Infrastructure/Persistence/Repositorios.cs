@@ -10,25 +10,64 @@ public sealed class PacienteRepository(AppDbContext db) : IPacienteRepository
     public Task<Paciente?> ObterPorCpfAsync(string cpf, CancellationToken ct = default) =>
         db.Pacientes.FirstOrDefaultAsync(p => p.Cpf == cpf, ct);
 
-    public Task<Paciente?> ObterPorAmplimedIdAsync(string amplimedId, CancellationToken ct = default) =>
-        db.Pacientes.FirstOrDefaultAsync(p => p.AmplimedId == amplimedId, ct);
+    public Task<Paciente?> ObterPorCodReferenciaAsync(string codReferencia, CancellationToken ct = default) =>
+        db.Pacientes.FirstOrDefaultAsync(p => p.CodReferencia == codReferencia, ct);
+
+    public Task<Paciente?> ObterPorTelefoneAsync(string telefone, CancellationToken ct = default) =>
+        db.Pacientes
+            .Where(p => p.Telefone == telefone)
+            .OrderByDescending(p => p.AtualizadoEm)
+            .FirstOrDefaultAsync(ct);
 
     public async Task AdicionarAsync(Paciente paciente, CancellationToken ct = default) =>
         await db.Pacientes.AddAsync(paciente, ct);
 }
 
-public sealed class AgendamentoRepository(AppDbContext db) : IAgendamentoRepository
+public sealed class AgendamentoRepository(AppDbContext db, IRelogio relogio) : IAgendamentoRepository
 {
+    /// <summary>
+    /// Tolerância ao casar o agendamento criado pela integração com a linha
+    /// correspondente em listar-agendamentos. Os dois instantes vêm da mesma
+    /// conversão de fuso, mas a API pode arredondar o minuto.
+    /// </summary>
+    private static readonly TimeSpan ToleranciaVinculo = TimeSpan.FromMinutes(1);
+
     public Task<Agendamento?> ObterPorIdAsync(Guid id, CancellationToken ct = default) =>
         db.Agendamentos.Include(a => a.Paciente).FirstOrDefaultAsync(a => a.Id == id, ct);
 
-    public Task<Agendamento?> ObterPorAmplimedIdAsync(string amplimedId, CancellationToken ct = default) =>
-        db.Agendamentos.Include(a => a.Paciente).FirstOrDefaultAsync(a => a.AmplimedId == amplimedId, ct);
+    public Task<Agendamento?> ObterPorIdIntegracaoAsync(string idIntegracao, CancellationToken ct = default) =>
+        db.Agendamentos
+            .Include(a => a.Paciente)
+            .FirstOrDefaultAsync(a => a.IdIntegracao == idIntegracao, ct);
+
+    public Task<Agendamento?> ObterPorIdAmplimedAsync(
+        string usuclin, long idAgendamento, CancellationToken ct = default) =>
+        db.Agendamentos
+            .Include(a => a.Paciente)
+            .FirstOrDefaultAsync(
+                a => a.Usuclin == usuclin && a.IdAgendamentoAmplimed == idAgendamento, ct);
+
+    public Task<Agendamento?> ObterSemVinculoDaAgendaAsync(
+        Guid pacienteId, DateTimeOffset inicioEm, CancellationToken ct = default)
+    {
+        var de = inicioEm - ToleranciaVinculo;
+        var ate = inicioEm + ToleranciaVinculo;
+
+        return db.Agendamentos
+            .Where(a => a.PacienteId == pacienteId
+                        && a.IdAgendamentoAmplimed == null
+                        && a.InicioEm >= de
+                        && a.InicioEm <= ate)
+            .OrderBy(a => a.InicioEm)
+            .FirstOrDefaultAsync(ct);
+    }
 
     public async Task<IReadOnlyList<Agendamento>> ListarPorDiaAsync(DateOnly dia, CancellationToken ct = default)
     {
-        var inicio = new DateTimeOffset(dia.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
-        var fim = inicio.AddDays(1);
+        // A borda do dia é a do fuso da clínica: em UTC, consultas das 21h
+        // cairiam no dia seguinte e as da noite anterior entrariam por engano.
+        var inicio = relogio.InicioDoDiaLocal(dia);
+        var fim = relogio.InicioDoDiaLocal(dia.AddDays(1));
 
         return await db.Agendamentos
             .Include(a => a.Paciente)

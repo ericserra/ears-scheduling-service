@@ -13,5 +13,12 @@ public enum EstadoConversa
     AguardandoEscolhaHorario = 5,
     Concluida = 6,
     TransferidaParaHumano = 7,
-    Expirada = 8
+    Expirada = 8,
+
+    /// <summary>
+    /// Só é alcançado quando o CPF não existe na base da Amplimed. O upsert do
+    /// <c>cadastrar-agendamento</c> casa por CPF + data de nascimento quando o
+    /// idUnico é novo; sem a data, criaria um cadastro duplicado.
+    /// </summary>
+    AguardandoDataNascimento = 9
 }

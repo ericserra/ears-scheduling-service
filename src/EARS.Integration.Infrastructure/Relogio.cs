@@ -1,5 +1,6 @@
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Options;
+using EARS.Integration.Infrastructure.Clients.Amplimed;
 using Microsoft.Extensions.Options;
 using TimeZoneConverter;
 
@@ -14,4 +15,7 @@ public sealed class Relogio(IOptions<AutomacaoOptions> options) : IRelogio
     public DateTimeOffset AgoraLocal => TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _fuso);
 
     public DateOnly HojeLocal => DateOnly.FromDateTime(AgoraLocal.Date);
+
+    public DateTimeOffset InicioDoDiaLocal(DateOnly dia) =>
+        DataHoraAmplimed.ComFuso(dia.ToDateTime(TimeOnly.MinValue), _fuso);
 }

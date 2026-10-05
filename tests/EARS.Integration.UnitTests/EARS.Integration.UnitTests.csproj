@@ -15,5 +15,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\EARS.Integration.Domain\EARS.Integration.Domain.csproj" />
     <ProjectReference Include="..\..\src\EARS.Integration.Application\EARS.Integration.Application.csproj" />
+    <ProjectReference Include="..\..\src\EARS.Integration.Infrastructure\EARS.Integration.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

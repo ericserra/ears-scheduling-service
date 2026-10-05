@@ -9,12 +9,18 @@ Paciente (WhatsApp)
    SleekFlow  ──webhook──►  EARS.Integration.Api
         ▲                          │
         └────Platform API──────────┤
-                                   ├──► Amplimed — Cadastro de Pacientes
                                    ├──► Amplimed — Agendamento
-                                   └──► Amplimed — Dados
+                                   └──► Amplimed — Cadastro de Pacientes
                                    │
                               PostgreSQL
+                                   ▲
+                                   │ polling (15 min)
+                        SincronizacaoAgendaJob
 ```
+
+A seta de polling não é um detalhe de implementação: a Amplimed **não oferece
+webhook** nesta integração. Sem consulta periódica, agendamento marcado no
+sistema da clínica nunca chegaria ao espelho local.
 
 ## Camadas
 
@@ -29,18 +35,56 @@ repositórios). Não conhece EF Core nem HttpClient.
 
 **Api** — composição, webhook e endpoints administrativos.
 
-## As três APIs da Amplimed
+## As duas APIs da Amplimed
 
-Cada uma tem esquema de autenticação próprio — por isso três clients, não um:
+| API | Base | Autenticação | Uso |
+|---|---|---|---|
+| Agendamento | `{gateway}/integracoes/referencia/{identificador}` | `x-authorization: {token}` | profissionais, horários livres, agenda do dia, marcação, status, cancelamento |
+| Cadastro de Pacientes | `{gateway}/pacientes/integration` | `x-Authorization: Basic {token}` | busca por CPF, cadastro, vínculo de codReferencia |
 
-| API | Autenticação | Uso |
-|---|---|---|
-| Cadastro de Pacientes | `x-Authorization: Basic {token}` | busca e criação de paciente |
-| Agendamento | `X-authorization` + identificador | horários livres, marcação, cancelamento |
-| Dados | `client_id`/`client_secret` → Bearer | profissionais, base de pacientes |
+O **identificador vai no caminho da rota**, depois de `/referencia`, e não em
+cabeçalho. Só o token é header.
 
-O client de Dados mantém o token em cache até expirar, com `SemaphoreSlim` para evitar
-renovação concorrente.
+A listagem de profissionais vem da própria API de Agendamento
+(`listar-profissionais`), então não há dependência da API de Dados.
+
+### Esquisitices que o código isola
+
+Tudo abaixo fica contido em `Clients/Amplimed`; o resto do sistema conversa pelos
+DTOs normalizados da camada de aplicação.
+
+- **Datas sem fuso, em dois formatos.** `"2023-11-14 08:00:00"` em
+  `listar-horarios`, `"2025-04-11T15:00:00"` em `listar-agendamentos`. Em ambos o
+  relógio é o da clínica: ler como UTC deslocaria tudo em três horas e o disparo
+  D-1 cairia no dia errado. Toda leitura passa por `DataHoraAmplimed`.
+- **Formatos de escrita divergentes entre as duas APIs.** Data de nascimento é
+  `yyyy-MM-dd` em `cadastrar-agendamento` e `dd/MM/yyyy` em `POST /pattient`.
+  Celular, nesta última, vai mascarado: `(48) 99999-9999`.
+- **Status em texto na leitura, numérico na escrita.** A listagem devolve
+  `"Agendado"`; `alterar-status-agendamento` recebe `statusCode`. `MapaStatus` faz
+  as duas pontas, e texto desconhecido não vira status inventado.
+- **Resposta da agenda aninhada por profissional**, achatada na leitura.
+- **Listagem de pacientes com duas formas**: array puro e `{ "data": [...] }`.
+- **A rota é `pattient`**, com dois t.
+
+### Identificação de paciente
+
+A API não expõe id próprio de paciente: o identificador é o `codReferencia`
+(`idUnico` na API de Agendamento, `codRef` na listagem da agenda), e quem o cunha
+é o integrador. Aqui ele é derivado do Guid local — `ears-{guid}` — por duas
+razões: reaproveitar um valor mescla cadastros silenciosamente, e embutir CPF no
+campo seria dado pessoal onde não precisa estar.
+
+Também não existe busca por telefone, só por CPF, nome ou codReferencia. Por isso
+o CPF é pedido na conversa, e o telefone serve apenas para casar com o espelho
+local.
+
+### Os dois identificadores de agendamento
+
+Ver [ADR 0003](adr/0003-identificadores-de-agendamento.md). Resumo: UUID da
+integração serve a cancelamento e exclusão; o par (usuclin, idAgendamento) da
+listagem serve à alteração de status. Não há tradução entre eles, e o agendamento
+criado pelo WhatsApp só ganha o par no primeiro polling que o encontrar.
 
 ## Resiliência
 
@@ -87,11 +131,19 @@ diagnóstico, prontuário ou queixa.
 
 | Tabela | Conteúdo |
 |---|---|
-| `pacientes` | espelho mínimo: id Amplimed, nome, CPF, telefone |
-| `agendamentos` | espelho local, status e marcos de envio |
+| `pacientes` | espelho mínimo: codReferencia, nome, CPF, telefone, data de nascimento |
+| `agendamentos` | espelho local, os dois identificadores Amplimed, status e marcos de envio |
 | `conversas` | estado da máquina, dados coletados no fluxo |
 | `mensagens_log` | trilha de auditoria de envios e recebimentos |
 | `opt_out` | descadastro, verificado antes de todo envio |
 | `outbox` | eventos pendentes de reprocessamento |
+
+A data de nascimento entrou no espelho por necessidade, não por conveniência: o
+upsert do `cadastrar-agendamento` casa por CPF + data de nascimento quando o
+`idUnico` ainda não existe na base, e sem ela o cadastro sairia duplicado.
+
+A especialidade do profissional **não** é guardada, mesmo vindo na listagem da
+agenda: o template de véspera não pode mencioná-la (Cláusula 13ª, § 2º), e o que
+não tem finalidade não entra.
 
 Retenção de 12 meses, com expurgo em `scripts/expurgo-lgpd.sql`.

@@ -34,22 +34,27 @@ public static class AdminEndpoints
         grupo.MapGet("/agendamentos", async (DateOnly? dia, AppDbContext db, IRelogio relogio, CancellationToken ct) =>
         {
             var alvo = dia ?? relogio.HojeLocal;
-            var inicio = new DateTimeOffset(alvo.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            var inicio = relogio.InicioDoDiaLocal(alvo);
+            var fim = relogio.InicioDoDiaLocal(alvo.AddDays(1));
 
             var lista = await db.Agendamentos
                 .Include(a => a.Paciente)
-                .Where(a => a.InicioEm >= inicio && a.InicioEm < inicio.AddDays(1))
+                .Where(a => a.InicioEm >= inicio && a.InicioEm < fim)
                 .OrderBy(a => a.InicioEm)
                 .Select(a => new
                 {
                     a.Id,
-                    a.AmplimedId,
+                    a.IdIntegracao,
+                    a.Usuclin,
+                    a.IdAgendamentoAmplimed,
                     Paciente = a.Paciente!.Nome,
                     a.ProfissionalNome,
                     a.InicioEm,
                     Status = a.Status.ToString(),
+                    Origem = a.Origem.ToString(),
                     a.ConfirmacaoEnviadaEm,
-                    a.RespondidoEm
+                    a.RespondidoEm,
+                    a.SincronizadoEm
                 })
                 .ToListAsync(ct);
 
@@ -77,6 +82,17 @@ public static class AdminEndpoints
             return Results.Ok(new { enviados });
         })
         .WithSummary("Dispara manualmente a varredura de confirmação D-1.");
+
+        grupo.MapPost("/agenda/sincronizar", async (
+            DateOnly? dia, SincronizarAgendaUseCase useCase, CancellationToken ct) =>
+        {
+            var resultado = dia is { } alvo
+                ? await useCase.ExecutarParaDiaAsync(alvo, ct)
+                : await useCase.ExecutarAsync(ct);
+
+            return Results.Ok(resultado);
+        })
+        .WithSummary("Força o polling da agenda da Amplimed, de um dia ou da janela configurada.");
 
         grupo.MapPost("/opt-out", async (
             string telefone, string? motivo,

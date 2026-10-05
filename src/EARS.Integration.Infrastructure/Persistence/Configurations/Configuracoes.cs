@@ -10,12 +10,15 @@ public class PacienteConfiguration : IEntityTypeConfiguration<Paciente>
     {
         b.ToTable("pacientes");
         b.HasKey(x => x.Id);
-        b.Property(x => x.AmplimedId).HasMaxLength(64).IsRequired();
+        // codReferencia = idUnico na API de Agendamento, codRef na listagem da agenda.
+        b.Property(x => x.CodReferencia).HasMaxLength(64).IsRequired();
         b.Property(x => x.Nome).HasMaxLength(200).IsRequired();
         b.Property(x => x.Cpf).HasMaxLength(11).IsRequired();
         b.Property(x => x.Telefone).HasMaxLength(20).IsRequired();
+        b.Property(x => x.DataNascimento);
+        b.Property(x => x.CodReferenciaVinculado).HasDefaultValue(false);
         b.HasIndex(x => x.Cpf).IsUnique();
-        b.HasIndex(x => x.AmplimedId).IsUnique();
+        b.HasIndex(x => x.CodReferencia).IsUnique();
         b.HasIndex(x => x.Telefone);
     }
 }
@@ -26,12 +29,24 @@ public class AgendamentoConfiguration : IEntityTypeConfiguration<Agendamento>
     {
         b.ToTable("agendamentos");
         b.HasKey(x => x.Id);
-        b.Property(x => x.AmplimedId).HasMaxLength(64).IsRequired();
-        b.Property(x => x.ProfissionalId).HasMaxLength(64).IsRequired();
+
+        // Os dois espaços de identificador da Amplimed (ADR 0003). Ambos são
+        // opcionais isoladamente: o que nasce no WhatsApp começa só com o UUID,
+        // o que vem da agenda da clínica só com o par inteiro.
+        b.Property(x => x.IdIntegracao).HasMaxLength(64);
+        b.Property(x => x.Usuclin).HasMaxLength(32);
+        b.Property(x => x.IdAgendamentoAmplimed);
+        b.Property(x => x.IdHorario).HasMaxLength(200);
+
+        b.Property(x => x.ProfissionalId).HasMaxLength(64);
         b.Property(x => x.ProfissionalNome).HasMaxLength(200).IsRequired();
         b.Property(x => x.Status).HasConversion<int>();
         b.Property(x => x.Origem).HasConversion<int>();
-        b.HasIndex(x => x.AmplimedId).IsUnique();
+
+        b.HasIndex(x => x.IdIntegracao).IsUnique().HasFilter("\"IdIntegracao\" IS NOT NULL");
+        b.HasIndex(x => new { x.Usuclin, x.IdAgendamentoAmplimed })
+            .IsUnique()
+            .HasFilter("\"IdAgendamentoAmplimed\" IS NOT NULL");
         b.HasIndex(x => x.InicioEm);
         b.HasOne(x => x.Paciente)
             .WithMany()
@@ -52,6 +67,8 @@ public class ConversaConfiguration : IEntityTypeConfiguration<Conversa>
         b.Property(x => x.NomeInformado).HasMaxLength(200);
         b.Property(x => x.CpfInformado).HasMaxLength(11);
         b.Property(x => x.ProfissionalId).HasMaxLength(64);
+        b.Property(x => x.DataNascimentoInformada);
+        b.Property(x => x.ProfissionaisOfertadosJson).HasColumnType("jsonb");
         b.Property(x => x.HorariosOfertadosJson).HasColumnType("jsonb");
         b.HasIndex(x => new { x.Telefone, x.Estado });
     }
