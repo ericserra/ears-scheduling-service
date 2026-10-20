@@ -1,0 +1,63 @@
+# Copie para terraform.tfvars e preencha. NÃO versione o terraform.tfvars.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   chmod 600 terraform.tfvars
+
+# --- Domínio e TLS ---------------------------------------------------------
+# Antes do apply: registro A de api.exemplo.com.br apontando para o IP da VPS,
+# já propagado. Confira com: dig +short api.exemplo.com.br
+dominio    = "api.exemplo.com.br"
+acme_email = "eric@strenos.com.br"
+
+# Deixe true na primeira subida. Depois que o roteamento responder, vire para
+# false e rode o apply de novo para pegar o certificado de verdade.
+acme_staging = true
+
+# --- Aplicação -------------------------------------------------------------
+# Caminho do repositório na VPS; o Terraform constrói a imagem daqui.
+app_contexto = "/opt/ears/src"
+app_versao   = "1.0.0"
+
+# Alternativa: imagem pronta de um registry, e app_contexto deixa de importar.
+# app_image = "ghcr.io/strenos/ears-integration:1.0.0"
+
+# --- Segredos --------------------------------------------------------------
+admin_api_key = "troque-por-algo-longo-e-aleatorio"
+
+# Faixas que podem alcançar /admin. Vazio deixa o endpoint aberto na internet,
+# protegido só pela chave acima.
+admin_ips = [
+  # "203.0.113.4/32",
+]
+
+# Homologação: https://stgintegracoes.amplimed.cloud/
+amplimed_base_url                  = "https://integracoes.amplimed.com.br/"
+amplimed_pacientes_token           = ""
+amplimed_agendamento_identificador = ""
+amplimed_agendamento_token         = ""
+
+# Número da clínica. Vazio derruba para o cenário B da Cláusula 3ª.
+amplimed_usuclin = ""
+
+sleekflow_api_key        = ""
+sleekflow_webhook_secret = ""
+
+# --- Banco -----------------------------------------------------------------
+# Deixe comentado para o Terraform gerar a senha.
+# postgres_password = ""
+
+# Descomente para alcançar o banco por túnel SSH:
+#   ssh -L 5432:127.0.0.1:5432 root@IP-DA-VPS
+# postgres_porta_local = 5432
+
+# --- Automação -------------------------------------------------------------
+leitura_agenda_via_api    = true
+cron_sincronizacao_agenda = "0 0/15 * * * ?"
+dias_sincronizacao_agenda = 2
+
+# Qualquer outro parâmetro, no padrão Secao__Chave:
+# env_extra = {
+#   "Automacao__CronConfirmacao"   = "0 0 17 * * ?"
+#   "Automacao__CronLembrete"      = "0 30 7 * * ?"
+#   "Automacao__MaxHorariosOfertados" = "5"
+# }

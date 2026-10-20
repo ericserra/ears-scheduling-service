@@ -1,0 +1,18 @@
+# State: contém os segredos em texto puro (ver README).
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+crash.*.log
+
+# Valores reais
+terraform.tfvars
+*.auto.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Planos salvos também carregam segredos
+*.tfplan
+
+# .terraform.lock.hcl FICA versionado de propósito: é ele que fixa a versão dos
+# providers e evita que um apply futuro troque o provider por baixo do pano.

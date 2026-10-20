@@ -19,6 +19,13 @@ RUN dotnet publish src/EARS.Integration.Api/EARS.Integration.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
+# curl é exigido pelo HEALTHCHECK abaixo e NÃO vem na imagem aspnet:8.0.
+# Sem ele o container fica permanentemente "unhealthy", e o apply do Terraform
+# (que espera o estado healthy) falharia num deploy perfeitamente bom.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Usuário sem privilégios
 RUN adduser --disabled-password --gecos "" --uid 1001 ears && chown -R ears /app
 USER ears

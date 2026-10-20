@@ -147,6 +147,16 @@ Os endpoints `/admin` exigem o cabeçalho `X-Api-Key`.
 - **Não há terceira mensagem.** Após o lembrete único, o agendamento é marcado como não
   confirmado e vira tarefa da recepção.
 
+## Deploy
+
+A VPS é governada por Terraform rodando nela mesma, com o provider do Docker:
+Traefik com TLS automático, a API e o Postgres em duas redes separadas. Ver
+[infra/terraform/README.md](infra/terraform/README.md).
+
+O `docker-compose.yml` da raiz sobe a mesma coisa e existe para
+**desenvolvimento local**. Não rode os dois contra o mesmo host: viram
+containers e volumes concorrentes com nomes diferentes.
+
 ## Operação
 
 | Rotina | Script | Cadência sugerida |
