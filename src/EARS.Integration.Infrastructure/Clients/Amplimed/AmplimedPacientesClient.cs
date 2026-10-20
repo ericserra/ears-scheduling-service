@@ -98,7 +98,7 @@ public sealed class AmplimedPacientesClient(
             request.CodReferencia,
             request.Nome,
             request.Nome,
-            SomenteDigitos(request.Cpf),
+            string.IsNullOrWhiteSpace(request.Cpf) ? null : SomenteDigitos(request.Cpf),
             request.DataNascimento is { } nascimento ? DataHoraAmplimed.DataBr(nascimento) : null,
             request.Genero,
             FormatarCelular(request.Celular),

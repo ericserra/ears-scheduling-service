@@ -54,13 +54,61 @@ public sealed class AgendamentoApiOptions
     public string Usuclin { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// SleekFlow Platform API. Base <c>https://api.sleekflow.io</c>, autenticada
+/// pelo cabeçalho <c>X-Sleekflow-Api-Key</c> — não é Bearer.
+/// </summary>
 public sealed class SleekFlowOptions
 {
     public const string SectionName = "SleekFlow";
 
     public string BaseUrl { get; set; } = "https://api.sleekflow.io/";
+
+    /// <summary>Enviado no cabeçalho <c>X-Sleekflow-Api-Key</c>.</summary>
     public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>Segredo compartilhado para validar a assinatura do webhook.</summary>
     public string WebhookSecret { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Canal da conta: <c>whatsappcloudapi</c>, <c>whatsapp360dialog</c> ou
+    /// <c>whatsapp</c> (Twilio). Decide o formato do objeto de template e de
+    /// botões, que difere entre eles.
+    /// </summary>
+    public string Canal { get; set; } = "whatsappcloudapi";
+
+    /// <summary>
+    /// Número remetente da clínica, em formato internacional sem o "+".
+    /// Obrigatório: o <c>send/json</c> exige o campo <c>from</c>.
+    /// </summary>
+    public string RemetenteTelefone { get; set; } = string.Empty;
+
+    /// <summary>Namespace dos templates. Só o 360dialog exige.</summary>
+    public string TemplateNamespace { get; set; } = string.Empty;
+
+    public string IdiomaTemplate { get; set; } = "pt_BR";
+
+    /// <summary>
+    /// Etiqueta que impede o menu do Flow Builder de reabrir enquanto o
+    /// agendamento está em curso. O gatilho do fluxo de entrada é
+    /// "Label NÃO contém este valor", então o nome precisa bater exatamente.
+    /// </summary>
+    public string EtiquetaAgendamentoEmCurso { get; set; } = "agendamento-em-curso";
+
+    /// <summary>
+    /// Etiqueta de transferência. A Platform API não atribui conversa a uma
+    /// equipe (o assignee só aceita staffId), então a entrega à Recepção é
+    /// feita aplicando esta etiqueta, que dispara um fluxo no Flow Builder.
+    /// Ver ADR 0004.
+    /// </summary>
+    public string EtiquetaTransferirRecepcao { get; set; } = "transferir-recepcao";
+
+    /// <summary>
+    /// Atribuição direta a um atendente, quando a clínica preferir. Vazio
+    /// deixa a entrega só por etiqueta.
+    /// </summary>
+    public string StaffIdRecepcao { get; set; } = string.Empty;
+
+    /// <summary>Marcadores analíticos anexados a cada envio.</summary>
+    public List<string> TagsAnaliticas { get; set; } = ["motor-strenos"];
 }

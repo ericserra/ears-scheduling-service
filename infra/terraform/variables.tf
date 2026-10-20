@@ -212,8 +212,67 @@ variable "amplimed_usuclin" {
 }
 
 variable "sleekflow_api_key" {
-  type      = string
-  sensitive = true
+  description = "Chave da Platform API. Vai no cabeçalho X-Sleekflow-Api-Key, não como Bearer."
+  type        = string
+  sensitive   = true
+}
+
+variable "sleekflow_canal" {
+  description = "Canal da conta: whatsappcloudapi, whatsapp360dialog ou whatsapp (Twilio). Decide o formato de template e de botões."
+  type        = string
+  default     = "whatsappcloudapi"
+
+  validation {
+    condition     = contains(["whatsappcloudapi", "whatsapp360dialog", "whatsapp"], var.sleekflow_canal)
+    error_message = "Use whatsappcloudapi, whatsapp360dialog ou whatsapp."
+  }
+}
+
+variable "sleekflow_remetente" {
+  description = <<-TXT
+    Número remetente da clínica, em formato internacional sem o "+".
+    Obrigatório: o endpoint de envio exige o campo "from", e sem ele nenhuma
+    mensagem sai.
+  TXT
+  type = string
+
+  validation {
+    condition     = can(regex("^[0-9]{10,15}$", var.sleekflow_remetente))
+    error_message = "Só dígitos, com DDI e sem o sinal de mais. Ex.: 5551999998888."
+  }
+}
+
+variable "sleekflow_template_namespace" {
+  description = "Namespace dos templates. Só o 360dialog exige."
+  type        = string
+  default     = ""
+}
+
+variable "sleekflow_etiqueta_em_curso" {
+  description = <<-TXT
+    Etiqueta que impede o menu do Flow Builder de reabrir durante um
+    agendamento. Precisa bater EXATAMENTE com o valor usado na condição de
+    inscrição do fluxo de entrada; divergir aqui faz o paciente cair de volta
+    no menu a cada resposta.
+  TXT
+  type    = string
+  default = "agendamento-em-curso"
+}
+
+variable "sleekflow_etiqueta_recepcao" {
+  description = <<-TXT
+    Etiqueta de transferência. A Platform API não atribui conversa a uma
+    equipe (o assignee só aceita staffId), então a entrega à Recepção é feita
+    por etiqueta, que dispara um fluxo no Flow Builder.
+  TXT
+  type    = string
+  default = "transferir-recepcao"
+}
+
+variable "sleekflow_staff_id_recepcao" {
+  description = "Atribuição direta a um atendente, quando a clínica preferir. Vazio deixa só a etiqueta."
+  type        = string
+  default     = ""
 }
 
 variable "sleekflow_webhook_secret" {
@@ -225,6 +284,30 @@ variable "sleekflow_webhook_secret" {
 # ---------------------------------------------------------------------------
 # Automação
 # ---------------------------------------------------------------------------
+
+variable "confirmacao_ativa" {
+  description = <<-TXT
+    Liga o Módulo 2 (confirmação de véspera e lembrete único).
+
+    Padrão false. O handoff da SleekFlow registra que a clínica ainda não
+    decidiu se haverá lembrete automático e alerta para não duplicar o que ela
+    já envia por outro meio. Com false, os jobs nem são registrados no Quartz;
+    o polling da agenda continua, porque é dele que sai o par de
+    identificadores da Amplimed.
+  TXT
+  type    = bool
+  default = false
+}
+
+variable "cron_expiracao_conversa" {
+  description = <<-TXT
+    Expiração de conversa abandonada. Não é higiene de banco: é o que devolve
+    o menu a quem desistiu no meio, tirando a etiqueta de agendamento em
+    curso. Desligar acumula pacientes presos sem menu.
+  TXT
+  type    = string
+  default = "0 0/10 * * * ?"
+}
 
 variable "leitura_agenda_via_api" {
   description = "Cenário A da Cláusula 3ª. false degrada para o espelho local."

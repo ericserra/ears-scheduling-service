@@ -297,7 +297,7 @@ public sealed class AmplimedAgendamentoClient : IAmplimedAgendamentoClient
         var corpo = new CadastrarAgendamentoJson(
             request.IdUnico,
             request.IdHorario,
-            SomenteDigitos(request.Cpf),
+            string.IsNullOrWhiteSpace(request.Cpf) ? null : SomenteDigitos(request.Cpf),
             request.Nome,
             request.DataNascimento is { } nascimento ? DataHoraAmplimed.Data(nascimento) : null,
             SomenteDigitosNacionais(request.Celular),

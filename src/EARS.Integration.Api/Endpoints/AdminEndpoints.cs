@@ -94,6 +94,31 @@ public static class AdminEndpoints
         })
         .WithSummary("Força o polling da agenda da Amplimed, de um dia ou da janela configurada.");
 
+        grupo.MapPost("/conversas/expirar", async (
+            ExpirarConversasUseCase useCase, CancellationToken ct) =>
+        {
+            var total = await useCase.ExecutarAsync(ct);
+            return Results.Ok(new { expiradas = total });
+        })
+        .WithSummary("Força a expiração de conversas abandonadas e libera as etiquetas presas.");
+
+        grupo.MapGet("/conversas/etiquetas-presas", async (
+            ExpirarConversasUseCase useCase, CancellationToken ct) =>
+        {
+            var telefones = await useCase.ListarEtiquetasPresasAsync(ct);
+
+            return Results.Ok(new
+            {
+                total = telefones.Count,
+                telefones,
+                observacao = telefones.Count == 0
+                    ? "Nenhum paciente preso sem menu."
+                    : "Estes números seguem com a etiqueta agendamento-em-curso: " +
+                      "eles escrevem no WhatsApp e o menu não abre.",
+            });
+        })
+        .WithSummary("Pacientes que ficaram com a etiqueta de agendamento em curso presa.");
+
         grupo.MapPost("/opt-out", async (
             string telefone, string? motivo,
             IOptOutRepository repo, IUnitOfWork uow, CancellationToken ct) =>

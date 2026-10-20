@@ -197,9 +197,9 @@ public sealed class SincronizarAgendaUseCase(
 
         var paciente = new Paciente(
             remoto.Nome,
-            cpf,
             telefone,
-            remoto.DataNascimento);
+            remoto.DataNascimento,
+            cpf);
 
         await pacientes.AdicionarAsync(paciente, ct);
 

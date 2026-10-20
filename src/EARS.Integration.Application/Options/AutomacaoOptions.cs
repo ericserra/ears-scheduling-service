@@ -22,6 +22,13 @@ public sealed class AutomacaoOptions
     public string CronOutbox { get; set; } = "0 0/5 * * * ?";
 
     /// <summary>
+    /// Cron da expiração de conversas abandonadas. Não é higiene de banco:
+    /// é o que devolve o menu a quem desistiu no meio do agendamento, tirando
+    /// a etiqueta agendamento-em-curso. Padrão: a cada 10 minutos.
+    /// </summary>
+    public string CronExpiracaoConversa { get; set; } = "0 0/10 * * * ?";
+
+    /// <summary>
     /// Cron do polling da agenda. A Amplimed não oferece webhook nesta
     /// integração, então conciliar a agenda depende de consulta periódica.
     /// Padrão: a cada 15 minutos.
@@ -59,6 +66,22 @@ public sealed class AutomacaoOptions
     /// ou a API ficar indisponível.
     /// </summary>
     public bool LeituraAgendaViaApi { get; set; } = true;
+
+    /// <summary>
+    /// Liga o Módulo 2 — confirmação de véspera e lembrete único.
+    /// </summary>
+    /// <remarks>
+    /// Padrão <c>false</c>. O handoff da SleekFlow (20/10/2026) registra que a
+    /// clínica ainda não decidiu se haverá lembretes automáticos e alerta para
+    /// não duplicar os que ela já envia por outro meio. Ligar sem essa
+    /// confirmação significa paciente recebendo dois avisos no primeiro dia,
+    /// que é o erro mais caro de reverter: desfaz a confiança no canal.
+    ///
+    /// Com <c>false</c>, os jobs de confirmação e lembrete não são sequer
+    /// registrados no Quartz. O polling da agenda continua, porque é dele que
+    /// sai o par de identificadores da Amplimed (ADR 0003).
+    /// </remarks>
+    public bool ConfirmacaoAtiva { get; set; }
 
     public TemplatesOptions Templates { get; set; } = new();
 }

@@ -9,6 +9,14 @@ Dois fluxos:
    é gravado direto na agenda da Amplimed.
 2. **Confirmação de véspera (D-1)** — rotina diária envia template com botões
    Confirmar / Remarcar / Cancelar e atualiza o agendamento conforme a resposta.
+   **Desligada por padrão** (`Automacao__ConfirmacaoAtiva`), aguardando a clínica
+   confirmar que não duplica lembrete que já envia por outro meio.
+
+> **O motor não é a porta de entrada do WhatsApp.** O menu é do fluxo
+> "EARS - Menu de entrada" no Advanced Flow Builder, que entrega a conversa ao
+> motor só nos ramos 1 (agendar consulta) e 3 (remarcar ou cancelar consulta).
+> A fronteira entre os dois, e a etiqueta que a sustenta, estão no
+> [ADR 0004](docs/adr/0004-integracao-flow-builder.md).
 
 ---
 
@@ -87,6 +95,10 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `Automacao__ExpiracaoConversa` | `06:00:00` | inatividade que encerra a conversa |
 | `Automacao__LeituraAgendaViaApi` | `true` | cenário A ou B da Cláusula 3ª — ver ADR 0002 |
 | `Automacao__CronSincronizacaoAgenda` | `0 0/15 * * * ?` | polling da agenda (a Amplimed não tem webhook) |
+| `Automacao__ConfirmacaoAtiva` | `false` | liga o Módulo 2 (confirmação e lembrete) |
+| `Automacao__CronExpiracaoConversa` | `0 0/10 * * * ?` | devolve o menu a quem desistiu no meio |
+| `SleekFlow__RemetenteTelefone` | — | número da clínica; sem ele nenhuma mensagem sai |
+| `SleekFlow__EtiquetaAgendamentoEmCurso` | `agendamento-em-curso` | precisa bater com o gatilho do fluxo |
 | `Automacao__DiasSincronizacaoAgenda` | `2` | janela do polling, contando hoje |
 | `Amplimed__Agendamento__Usuclin` | — | número da clínica; sem ele o cenário A não roda |
 
@@ -95,11 +107,14 @@ Parâmetros de automação ajustáveis sem recompilar:
 | Método | Rota | Descrição |
 |---|---|---|
 | `GET` | `/health` | health check (API + Postgres) |
+| `POST` | `/webhooks/sleekflow/atendimento` | o Flow Builder entrega a conversa ao motor (ramos 1 e 3) |
 | `POST` | `/webhooks/sleekflow` | recebe mensagens e respostas de botão |
 | `GET` | `/admin/agendamentos?dia=` | agendamentos do dia com status |
 | `GET` | `/admin/logs?pagina=` | trilha de auditoria de mensagens |
 | `POST` | `/admin/confirmacao/disparar` | dispara a varredura D-1 manualmente |
 | `POST` | `/admin/agenda/sincronizar?dia=` | força o polling da agenda da Amplimed |
+| `POST` | `/admin/conversas/expirar` | expira conversas paradas e libera etiquetas |
+| `GET` | `/admin/conversas/etiquetas-presas` | pacientes que ficaram sem menu |
 | `POST` | `/admin/opt-out?telefone=` | registra descadastro |
 | `GET` | `/admin/config` | parâmetros em vigor |
 
@@ -117,9 +132,26 @@ Os endpoints `/admin` exigem o cabeçalho `X-Api-Key`.
 - **[ADR 0003](docs/adr/0003-identificadores-de-agendamento.md)** — os dois
   espaços de identificador de agendamento da Amplimed, e por que o espelho local
   guarda ambos.
+- **[ADR 0004](docs/adr/0004-integracao-flow-builder.md)** — a divisão de
+  trabalho com o Flow Builder: quem é dono do menu, a etiqueta que acopla os
+  dois, a ordem de coleta definida pela clínica e por que o CPF deixou de ser
+  obrigatório. Baseado no
+  [handoff da SleekFlow](docs/integracao/handoff-sleekflow-2026-10-20.md).
 
 ## Regras que não são óbvias no código
 
+- **A etiqueta `agendamento-em-curso` é o acoplamento mais frágil do sistema.**
+  Enquanto ela está no contato, o menu do Flow Builder não abre. Aplicá-la e
+  esquecer de removê-la deixa o paciente mudo: ele escreve, nada responde, e não
+  há erro em lugar nenhum. Por isso existe o `ExpiracaoConversaJob`, e por isso
+  toda saída do fluxo passa por um único método que remove a etiqueta.
+- **As regras da clínica estão em configuração, não em código.** Grade etária
+  por profissional, convênios de triagem humana, termos de urgência e a frase de
+  transferência vivem na seção `Clinica`. Mudam sem deploy porque mudam sem aviso.
+- **IPE e Unimed Unifácil não veem horário nem nome de médica.** A triagem é
+  humana, e a regra é aplicada antes de qualquer oferta.
+- **A resposta de cancelamento não menciona multa nem taxa**, nem para dizer que
+  não há: a clínica não cobra, e citar o assunto planta a ideia.
 - **A Amplimed não oferece webhook nesta integração.** Agendamento marcado no
   sistema da clínica só chega aqui por polling (`SincronizacaoAgendaJob`), e é o
   polling que descobre o par `(usuclin, idAgendamento)` sem o qual não se grava

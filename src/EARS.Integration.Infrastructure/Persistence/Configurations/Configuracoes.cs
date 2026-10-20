@@ -13,11 +13,17 @@ public class PacienteConfiguration : IEntityTypeConfiguration<Paciente>
         // codReferencia = idUnico na API de Agendamento, codRef na listagem da agenda.
         b.Property(x => x.CodReferencia).HasMaxLength(64).IsRequired();
         b.Property(x => x.Nome).HasMaxLength(200).IsRequired();
-        b.Property(x => x.Cpf).HasMaxLength(11).IsRequired();
+        // CPF é opcional: a ordem de coleta da clínica pede nome e data de
+        // nascimento, e o CPF só entra para desempatar homônimo (ADR 0004).
+        b.Property(x => x.Cpf).HasMaxLength(11);
         b.Property(x => x.Telefone).HasMaxLength(20).IsRequired();
         b.Property(x => x.DataNascimento);
         b.Property(x => x.CodReferenciaVinculado).HasDefaultValue(false);
-        b.HasIndex(x => x.Cpf).IsUnique();
+
+        // Único quando existe: dois pacientes não podem dividir CPF, mas
+        // muitos podem não ter nenhum.
+        b.HasIndex(x => x.Cpf).IsUnique().HasFilter("\"Cpf\" IS NOT NULL");
+        b.HasIndex(x => new { x.Nome, x.DataNascimento });
         b.HasIndex(x => x.CodReferencia).IsUnique();
         b.HasIndex(x => x.Telefone);
     }
@@ -63,14 +69,26 @@ public class ConversaConfiguration : IEntityTypeConfiguration<Conversa>
         b.HasKey(x => x.Id);
         b.Property(x => x.Telefone).HasMaxLength(20).IsRequired();
         b.Property(x => x.SleekFlowContatoId).HasMaxLength(64);
+        b.Property(x => x.SleekFlowConversaId).HasMaxLength(64);
+        b.Property(x => x.Motivo).HasConversion<int>();
         b.Property(x => x.Estado).HasConversion<int>();
+
+        // Espelha a etiqueta agendamento-em-curso no contato do SleekFlow.
+        // O job de expiração lê esta coluna para saber de quem precisa tirar.
+        b.Property(x => x.EtiquetaAplicada).HasDefaultValue(false);
+        b.Property(x => x.PacienteEhOContato);
+        b.Property(x => x.IdadePaciente);
+        b.Property(x => x.Convenio).HasMaxLength(120);
+        b.Property(x => x.PreferenciaDiaTurno).HasMaxLength(200);
+        b.Property(x => x.AgendamentoAlvoId);
         b.Property(x => x.NomeInformado).HasMaxLength(200);
         b.Property(x => x.CpfInformado).HasMaxLength(11);
-        b.Property(x => x.ProfissionalId).HasMaxLength(64);
         b.Property(x => x.DataNascimentoInformada);
-        b.Property(x => x.ProfissionaisOfertadosJson).HasColumnType("jsonb");
         b.Property(x => x.HorariosOfertadosJson).HasColumnType("jsonb");
         b.HasIndex(x => new { x.Telefone, x.Estado });
+
+        // Varredura do job de expiração: conversas paradas, mais antigas primeiro.
+        b.HasIndex(x => new { x.Estado, x.UltimaInteracaoEm });
     }
 }
 

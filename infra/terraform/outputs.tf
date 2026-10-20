@@ -26,6 +26,20 @@ output "admin_restrito_por_ip" {
   value       = local.admin_restrito
 }
 
+output "url_atendimento" {
+  description = "Endereço a configurar no nó HTTP do Flow Builder, nos ramos 1 e 3 do menu."
+  value       = "https://${var.dominio}/webhooks/sleekflow/atendimento"
+}
+
+output "modulo2_confirmacao" {
+  description = "Estado do Módulo 2 nesta instalação."
+  value = (
+    var.confirmacao_ativa
+    ? "ATIVO — confirmação de véspera e lembrete serão disparados"
+    : "desligado — aguardando a clínica confirmar que não duplica lembrete existente"
+  )
+}
+
 output "containers" {
   value = {
     traefik  = docker_container.traefik.name

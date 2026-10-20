@@ -42,6 +42,23 @@ amplimed_usuclin = ""
 sleekflow_api_key        = ""
 sleekflow_webhook_secret = ""
 
+# Número remetente da clínica, com DDI e sem o "+". Obrigatório.
+sleekflow_remetente = "5551999998888"
+
+# whatsappcloudapi | whatsapp360dialog | whatsapp (Twilio)
+sleekflow_canal = "whatsappcloudapi"
+
+# Só o 360dialog exige namespace de template.
+# sleekflow_template_namespace = ""
+
+# PRECISA bater exatamente com a condição de inscrição do fluxo de entrada.
+sleekflow_etiqueta_em_curso = "agendamento-em-curso"
+
+# A Platform API não atribui conversa a equipe; a entrega à Recepção é por
+# etiqueta, que dispara um fluxo no Flow Builder.
+sleekflow_etiqueta_recepcao = "transferir-recepcao"
+# sleekflow_staff_id_recepcao = ""
+
 # --- Banco -----------------------------------------------------------------
 # Deixe comentado para o Terraform gerar a senha.
 # postgres_password = ""
@@ -52,6 +69,13 @@ sleekflow_webhook_secret = ""
 
 # --- Automação -------------------------------------------------------------
 leitura_agenda_via_api    = true
+
+# Módulo 2 desligado até a clínica confirmar que não duplica lembrete que já
+# envia por outro meio. Ligar é trocar para true e dar apply.
+confirmacao_ativa = false
+
+# Devolve o menu a quem desistiu no meio do agendamento.
+cron_expiracao_conversa = "0 0/10 * * * ?"
 cron_sincronizacao_agenda = "0 0/15 * * * ?"
 dias_sincronizacao_agenda = 2
 

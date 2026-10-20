@@ -7,8 +7,22 @@ namespace EARS.Integration.Infrastructure.Persistence;
 
 public sealed class PacienteRepository(AppDbContext db) : IPacienteRepository
 {
+    public Task<Paciente?> ObterPorIdAsync(Guid id, CancellationToken ct = default) =>
+        db.Pacientes.FirstOrDefaultAsync(p => p.Id == id, ct);
+
     public Task<Paciente?> ObterPorCpfAsync(string cpf, CancellationToken ct = default) =>
         db.Pacientes.FirstOrDefaultAsync(p => p.Cpf == cpf, ct);
+
+    public async Task<IReadOnlyList<Paciente>> ListarPorNomeEDataNascimentoAsync(
+        string nome, DateOnly dataNascimento, CancellationToken ct = default)
+    {
+        var alvo = nome.Trim().ToLower();
+
+        return await db.Pacientes
+            .Where(p => p.DataNascimento == dataNascimento && p.Nome.ToLower() == alvo)
+            .OrderBy(p => p.CriadoEm)
+            .ToListAsync(ct);
+    }
 
     public Task<Paciente?> ObterPorCodReferenciaAsync(string codReferencia, CancellationToken ct = default) =>
         db.Pacientes.FirstOrDefaultAsync(p => p.CodReferencia == codReferencia, ct);
@@ -104,6 +118,14 @@ public sealed class ConversaRepository(AppDbContext db) : IConversaRepository
             .Where(c => c.Telefone == telefone && !Finais.Contains(c.Estado))
             .OrderByDescending(c => c.UltimaInteracaoEm)
             .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<Conversa>> ListarParadasAsync(
+        DateTimeOffset limite, int maximo, CancellationToken ct = default) =>
+        await db.Conversas
+            .Where(c => !Finais.Contains(c.Estado) && c.UltimaInteracaoEm < limite)
+            .OrderBy(c => c.UltimaInteracaoEm)
+            .Take(maximo)
+            .ToListAsync(ct);
 
     public async Task AdicionarAsync(Conversa conversa, CancellationToken ct = default) =>
         await db.Conversas.AddAsync(conversa, ct);

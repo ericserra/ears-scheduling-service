@@ -113,7 +113,7 @@ public sealed record PaginaDaAgenda(
 public sealed record CadastrarAgendamentoRequest(
     string IdUnico,
     string IdHorario,
-    string Cpf,
+    string? Cpf,
     string Nome,
     DateOnly? DataNascimento,
     string Celular,
@@ -163,7 +163,7 @@ public sealed record PacienteAmplimed(
 public sealed record CadastrarPacienteRequest(
     string CodReferencia,
     string Nome,
-    string Cpf,
+    string? Cpf,
     string? Celular,
     DateOnly? DataNascimento,
     string? Genero = null,

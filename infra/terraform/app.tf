@@ -47,13 +47,21 @@ locals {
     "Amplimed__Agendamento__Token"            = var.amplimed_agendamento_token
     "Amplimed__Agendamento__Usuclin"          = var.amplimed_usuclin
 
-    "SleekFlow__ApiKey"        = var.sleekflow_api_key
-    "SleekFlow__WebhookSecret" = var.sleekflow_webhook_secret
+    "SleekFlow__ApiKey"                   = var.sleekflow_api_key
+    "SleekFlow__WebhookSecret"            = var.sleekflow_webhook_secret
+    "SleekFlow__Canal"                    = var.sleekflow_canal
+    "SleekFlow__RemetenteTelefone"        = var.sleekflow_remetente
+    "SleekFlow__TemplateNamespace"        = var.sleekflow_template_namespace
+    "SleekFlow__EtiquetaAgendamentoEmCurso" = var.sleekflow_etiqueta_em_curso
+    "SleekFlow__EtiquetaTransferirRecepcao" = var.sleekflow_etiqueta_recepcao
+    "SleekFlow__StaffIdRecepcao"          = var.sleekflow_staff_id_recepcao
 
     "Automacao__FusoHorario"              = var.fuso_horario
     "Automacao__LeituraAgendaViaApi"      = tostring(var.leitura_agenda_via_api)
     "Automacao__CronSincronizacaoAgenda"  = var.cron_sincronizacao_agenda
     "Automacao__DiasSincronizacaoAgenda"  = tostring(var.dias_sincronizacao_agenda)
+    "Automacao__ConfirmacaoAtiva"         = tostring(var.confirmacao_ativa)
+    "Automacao__CronExpiracaoConversa"    = var.cron_expiracao_conversa
   }
 
   env_final = merge(local.env_base, var.env_extra)

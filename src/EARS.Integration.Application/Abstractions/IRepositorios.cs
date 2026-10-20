@@ -4,7 +4,17 @@ namespace EARS.Integration.Application.Abstractions;
 
 public interface IPacienteRepository
 {
+    Task<Paciente?> ObterPorIdAsync(Guid id, CancellationToken ct = default);
+
     Task<Paciente?> ObterPorCpfAsync(string cpf, CancellationToken ct = default);
+
+    /// <summary>
+    /// Busca pelo par nome + data de nascimento, que é a ordem de coleta da
+    /// clínica. Devolve a lista inteira: mais de um resultado significa
+    /// homônimos, e aí o CPF entra para desempatar.
+    /// </summary>
+    Task<IReadOnlyList<Paciente>> ListarPorNomeEDataNascimentoAsync(
+        string nome, DateOnly dataNascimento, CancellationToken ct = default);
 
     /// <summary>Busca pelo codReferencia cunhado por este serviço (idUnico/codRef na Amplimed).</summary>
     Task<Paciente?> ObterPorCodReferenciaAsync(string codReferencia, CancellationToken ct = default);
@@ -49,6 +59,15 @@ public interface IAgendamentoRepository
 public interface IConversaRepository
 {
     Task<Conversa?> ObterAtivaPorTelefoneAsync(string telefone, CancellationToken ct = default);
+
+    /// <summary>
+    /// Conversas paradas além da janela e ainda não encerradas. Base do job de
+    /// expiração, que é o que tira a etiqueta de quem desistiu no meio — sem
+    /// ele o paciente fica sem menu para sempre.
+    /// </summary>
+    Task<IReadOnlyList<Conversa>> ListarParadasAsync(
+        DateTimeOffset limite, int maximo, CancellationToken ct = default);
+
     Task AdicionarAsync(Conversa conversa, CancellationToken ct = default);
 }
 

@@ -85,7 +85,7 @@ internal sealed record HistoricoJson(
 internal sealed record CadastrarAgendamentoJson(
     [property: JsonPropertyName("idUnico")] string IdUnico,
     [property: JsonPropertyName("idHorario")] string IdHorario,
-    [property: JsonPropertyName("cpf")] string Cpf,
+    [property: JsonPropertyName("cpf")] string? Cpf,
     [property: JsonPropertyName("nome")] string Nome,
     [property: JsonPropertyName("dataNascimento")] string? DataNascimento,
     [property: JsonPropertyName("celular")] string Celular,
@@ -148,7 +148,7 @@ internal sealed record CadastrarPacienteJson(
     [property: JsonPropertyName("codReferencia")] string CodReferencia,
     [property: JsonPropertyName("nomeRegistro")] string NomeRegistro,
     [property: JsonPropertyName("nomeSocial")] string? NomeSocial,
-    [property: JsonPropertyName("cpf")] string Cpf,
+    [property: JsonPropertyName("cpf")] string? Cpf,
     [property: JsonPropertyName("dataNascimento")] string? DataNascimento,
     [property: JsonPropertyName("genero")] string? Genero,
     [property: JsonPropertyName("celular")] string? Celular,

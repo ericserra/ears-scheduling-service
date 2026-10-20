@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
@@ -22,6 +21,7 @@ public static class DependencyInjection
         this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AutomacaoOptions>(configuration.GetSection(AutomacaoOptions.SectionName));
+        services.Configure<RegrasClinicaOptions>(configuration.GetSection(RegrasClinicaOptions.SectionName));
         services.Configure<AmplimedOptions>(configuration.GetSection(AmplimedOptions.SectionName));
         services.Configure<SleekFlowOptions>(configuration.GetSection(SleekFlowOptions.SectionName));
 
@@ -38,6 +38,9 @@ public static class DependencyInjection
         services.AddSingleton<IRelogio, Relogio>();
 
         services.AddScoped<ProcessarMensagemRecebidaUseCase>();
+        services.AddScoped<IDialogoAtendimento>(sp => sp.GetRequiredService<ProcessarMensagemRecebidaUseCase>());
+        services.AddScoped<IniciarAtendimentoUseCase>();
+        services.AddScoped<ExpirarConversasUseCase>();
         services.AddScoped<ProcessarRespostaConfirmacaoUseCase>();
         services.AddScoped<EnviarConfirmacaoD1UseCase>();
         services.AddScoped<EnviarLembreteUseCase>();
@@ -76,11 +79,11 @@ public static class DependencyInjection
             .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "AmplimedAgendamento"))
             .AddPolicyHandler(PoliticasHttp.Timeout());
 
+        // A Platform API autentica por X-Sleekflow-Api-Key, não por Bearer.
         services.AddHttpClient<ISleekFlowClient, SleekFlowClient>(c =>
             {
                 c.BaseAddress = new Uri(sleekFlow.BaseUrl);
-                c.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", sleekFlow.ApiKey);
+                c.DefaultRequestHeaders.Add("X-Sleekflow-Api-Key", sleekFlow.ApiKey);
             })
             .AddPolicyHandler((sp, _) => PoliticasHttp.Retry(Logger(sp), "SleekFlow"))
             .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "SleekFlow"))
@@ -96,19 +99,35 @@ public static class DependencyInjection
 
         services.AddQuartz(q =>
         {
-            var confirmacao = new JobKey(nameof(ConfirmacaoD1Job));
-            q.AddJob<ConfirmacaoD1Job>(o => o.WithIdentity(confirmacao));
-            q.AddTrigger(t => t
-                .ForJob(confirmacao)
-                .WithIdentity($"{nameof(ConfirmacaoD1Job)}-trigger")
-                .WithCronSchedule(automacao.CronConfirmacao, x => x.InTimeZone(fuso)));
+            // Módulo 2 só entra quando a clínica confirmar que quer lembrete
+            // automático. Enquanto não confirmar, os jobs nem são registrados:
+            // o risco é o paciente receber a confirmação em duplicidade com o
+            // que a clínica já manda por outro meio.
+            if (automacao.ConfirmacaoAtiva)
+            {
+                var confirmacao = new JobKey(nameof(ConfirmacaoD1Job));
+                q.AddJob<ConfirmacaoD1Job>(o => o.WithIdentity(confirmacao));
+                q.AddTrigger(t => t
+                    .ForJob(confirmacao)
+                    .WithIdentity($"{nameof(ConfirmacaoD1Job)}-trigger")
+                    .WithCronSchedule(automacao.CronConfirmacao, x => x.InTimeZone(fuso)));
 
-            var lembrete = new JobKey(nameof(LembreteJob));
-            q.AddJob<LembreteJob>(o => o.WithIdentity(lembrete));
+                var lembrete = new JobKey(nameof(LembreteJob));
+                q.AddJob<LembreteJob>(o => o.WithIdentity(lembrete));
+                q.AddTrigger(t => t
+                    .ForJob(lembrete)
+                    .WithIdentity($"{nameof(LembreteJob)}-trigger")
+                    .WithCronSchedule(automacao.CronLembrete, x => x.InTimeZone(fuso)));
+            }
+
+            // Expiração de conversa roda sempre: é ela que devolve o menu a
+            // quem desistiu no meio do agendamento.
+            var expiracao = new JobKey(nameof(ExpiracaoConversaJob));
+            q.AddJob<ExpiracaoConversaJob>(o => o.WithIdentity(expiracao));
             q.AddTrigger(t => t
-                .ForJob(lembrete)
-                .WithIdentity($"{nameof(LembreteJob)}-trigger")
-                .WithCronSchedule(automacao.CronLembrete, x => x.InTimeZone(fuso)));
+                .ForJob(expiracao)
+                .WithIdentity($"{nameof(ExpiracaoConversaJob)}-trigger")
+                .WithCronSchedule(automacao.CronExpiracaoConversa, x => x.InTimeZone(fuso)));
 
             // Polling da agenda: a Amplimed não oferece webhook nesta integração.
             var sincronizacao = new JobKey(nameof(SincronizacaoAgendaJob));

@@ -20,12 +20,12 @@ public class Paciente : EntidadeBase
 {
     private Paciente() { }
 
-    public Paciente(string nome, Cpf cpf, Telefone telefone, DateOnly? dataNascimento = null)
+    public Paciente(string nome, Telefone telefone, DateOnly? dataNascimento = null, Cpf? cpf = null)
     {
         Nome = nome;
-        Cpf = cpf.Value;
         Telefone = telefone.Value;
         DataNascimento = dataNascimento;
+        Cpf = cpf?.Value;
         CodReferencia = GerarCodReferencia(Id);
     }
 
@@ -41,7 +41,14 @@ public class Paciente : EntidadeBase
     public string CodReferencia { get; private set; } = null!;
 
     public string Nome { get; private set; } = null!;
-    public string Cpf { get; private set; } = null!;
+
+    /// <summary>
+    /// Opcional. A ordem de coleta definida pela clínica pede nome e data de
+    /// nascimento, não CPF; ele só é pedido quando esses dois não resolvem o
+    /// paciente na Amplimed. Ver ADR 0004.
+    /// </summary>
+    public string? Cpf { get; private set; }
+
     public string Telefone { get; private set; } = null!;
 
     /// <summary>
@@ -66,6 +73,13 @@ public class Paciente : EntidadeBase
     public void RegistrarDataNascimento(DateOnly data)
     {
         DataNascimento = data;
+        Tocar();
+    }
+
+    /// <summary>Preenche o CPF quando ele aparece depois, na conversa ou na Amplimed.</summary>
+    public void DefinirCpf(Cpf cpf)
+    {
+        Cpf = cpf.Value;
         Tocar();
     }
 
