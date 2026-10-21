@@ -8,8 +8,8 @@ output "url_health" {
 }
 
 output "certificado_de_staging" {
-  description = "true significa certificado não confiável pelo navegador — vire acme_staging para false depois de validar o roteamento."
-  value       = var.acme_staging
+  description = "true significa certificado não confiável pelo navegador. Sem efeito quando o proxy é externo."
+  value       = var.usar_traefik && var.acme_staging
 }
 
 output "cenario_clausula_terceira" {
@@ -40,12 +40,28 @@ output "modulo2_confirmacao" {
   )
 }
 
+output "proxy" {
+  description = "Quem atende 80 e 443, e como o proxy alcança a API."
+  value = (
+    var.usar_traefik
+    ? "Traefik desta stack, com TLS automático da Let's Encrypt"
+    : format(
+        "proxy externo. Aponte-o para %s. TLS é responsabilidade dele.",
+        var.rede_proxy_externa != ""
+          ? "o container ${var.projeto}-api na rede ${var.rede_proxy_externa}, porta ${var.app_porta}"
+          : "127.0.0.1:${var.porta_host_api}"
+      )
+  )
+}
+
 output "containers" {
-  value = {
-    traefik  = docker_container.traefik.name
-    api      = docker_container.api.name
-    postgres = docker_container.postgres.name
-  }
+  value = merge(
+    {
+      api      = docker_container.api.name
+      postgres = docker_container.postgres.name
+    },
+    var.usar_traefik ? { traefik = docker_container.traefik[0].name } : {},
+  )
 }
 
 output "postgres_password" {

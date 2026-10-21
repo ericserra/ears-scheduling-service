@@ -44,9 +44,50 @@ variable "dominio" {
   }
 }
 
+variable "usar_traefik" {
+  description = <<-TXT
+    true cria o Traefik desta stack, com TLS automático, ocupando 80 e 443.
+
+    false para VPS que já tem proxy nessas portas — Easypanel, nginx, outro
+    Traefik. Nesse caso nada de proxy é criado aqui: a API entra na rede do
+    proxy existente (rede_proxy_externa) e também é publicada em
+    127.0.0.1:porta_host_api, para servir de alvo tanto a proxy que lê labels
+    do docker quanto a proxy que roteia por configuração própria.
+
+    Com false, acme_email e acme_staging não têm efeito: quem emite e renova
+    certificado é o proxy que já está lá.
+  TXT
+  type    = bool
+  default = true
+}
+
+variable "rede_proxy_externa" {
+  description = <<-TXT
+    Nome da rede docker do proxy existente, quando usar_traefik = false.
+    A rede precisa existir; este Terraform só entra nela.
+
+    Descubra com: docker network ls
+    No Easypanel costuma ser "easypanel".
+
+    Vazio faz a API ser alcançada apenas pela porta publicada em 127.0.0.1.
+  TXT
+  type    = string
+  default = ""
+}
+
+variable "porta_host_api" {
+  description = <<-TXT
+    Porta no host onde a API fica disponível quando o proxy é externo.
+    Publicada só em 127.0.0.1: quem atende a internet é o proxy.
+  TXT
+  type    = number
+  default = 8080
+}
+
 variable "acme_email" {
-  description = "E-mail de contato da Let's Encrypt (avisos de expiração)."
+  description = "E-mail de contato da Let's Encrypt. Ignorado quando usar_traefik = false."
   type        = string
+  default     = ""
 }
 
 variable "acme_staging" {

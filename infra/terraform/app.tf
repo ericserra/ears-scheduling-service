@@ -70,13 +70,12 @@ locals {
   # /admin, este com prioridade maior e faixa de IP quando configurada.
   labels_base = {
     "traefik.enable"         = "true"
-    "traefik.docker.network" = docker_network.edge.name
+    "traefik.docker.network" = local.rede_proxy
 
-    "traefik.http.routers.${var.projeto}.rule"             = "Host(`${var.dominio}`)"
-    "traefik.http.routers.${var.projeto}.entrypoints"      = "websecure"
-    "traefik.http.routers.${var.projeto}.tls.certresolver" = "le"
-    "traefik.http.routers.${var.projeto}.priority"         = "10"
-    "traefik.http.routers.${var.projeto}.middlewares"      = "${var.projeto}-seguranca@docker"
+    "traefik.http.routers.${var.projeto}.rule"        = "Host(`${var.dominio}`)"
+    "traefik.http.routers.${var.projeto}.entrypoints" = "websecure"
+    "traefik.http.routers.${var.projeto}.priority"    = "10"
+    "traefik.http.routers.${var.projeto}.middlewares" = "${var.projeto}-seguranca@docker"
 
     "traefik.http.services.${var.projeto}.loadbalancer.server.port" = tostring(var.app_porta)
 
@@ -87,18 +86,29 @@ locals {
     "traefik.http.middlewares.${var.projeto}-seguranca.headers.referrerPolicy"       = "no-referrer"
   }
 
-  labels_admin = local.admin_restrito ? {
-    "traefik.http.routers.${var.projeto}-admin.rule"             = "Host(`${var.dominio}`) && PathPrefix(`/admin`)"
-    "traefik.http.routers.${var.projeto}-admin.entrypoints"      = "websecure"
-    "traefik.http.routers.${var.projeto}-admin.tls.certresolver" = "le"
-    "traefik.http.routers.${var.projeto}-admin.priority"         = "100"
-    "traefik.http.routers.${var.projeto}-admin.service"          = var.projeto
-    "traefik.http.routers.${var.projeto}-admin.middlewares"      = "${var.projeto}-admin-ips@docker,${var.projeto}-seguranca@docker"
-
-    "traefik.http.middlewares.${var.projeto}-admin-ips.ipallowlist.sourcerange" = join(",", var.admin_ips)
+  # O resolvedor de certificado é do nosso Traefik. Com proxy externo quem
+  # termina TLS é ele, e rotular um resolvedor que não existe lá faz o roteador
+  # ser descartado em silêncio.
+  labels_tls = var.usar_traefik ? {
+    "traefik.http.routers.${var.projeto}.tls.certresolver" = "le"
   } : {}
 
-  labels_final = merge(local.labels_base, local.labels_admin)
+  labels_admin = local.admin_restrito ? merge(
+    {
+      "traefik.http.routers.${var.projeto}-admin.rule"        = "Host(`${var.dominio}`) && PathPrefix(`/admin`)"
+      "traefik.http.routers.${var.projeto}-admin.entrypoints" = "websecure"
+      "traefik.http.routers.${var.projeto}-admin.priority"    = "100"
+      "traefik.http.routers.${var.projeto}-admin.service"     = var.projeto
+      "traefik.http.routers.${var.projeto}-admin.middlewares" = "${var.projeto}-admin-ips@docker,${var.projeto}-seguranca@docker"
+
+      "traefik.http.middlewares.${var.projeto}-admin-ips.ipallowlist.sourcerange" = join(",", var.admin_ips)
+    },
+    var.usar_traefik ? {
+      "traefik.http.routers.${var.projeto}-admin.tls.certresolver" = "le"
+    } : {},
+  ) : {}
+
+  labels_final = merge(local.labels_base, local.labels_tls, local.labels_admin)
 }
 
 # ---------------------------------------------------------------------------
@@ -117,8 +127,12 @@ resource "docker_container" "api" {
 
   env = [for chave, valor in local.env_final : "${chave}=${valor}"]
 
-  networks_advanced {
-    name = docker_network.edge.name
+  # Borda: a nossa rede, ou a do proxy que já existe na máquina.
+  dynamic "networks_advanced" {
+    for_each = local.rede_proxy == "" ? [] : [local.rede_proxy]
+    content {
+      name = networks_advanced.value
+    }
   }
 
   networks_advanced {
@@ -133,8 +147,20 @@ resource "docker_container" "api" {
     }
   }
 
-  # Sem ports: quem fala com a internet é o Traefik. A API só é alcançável
-  # pela rede edge.
+  # Com o Traefik nosso, nada é publicado: a API só é alcançável pela rede de
+  # borda. Com proxy externo, publicamos em 127.0.0.1 para que ele tenha um
+  # alvo mesmo quando não lê labels do docker — caso do Easypanel, que roteia
+  # pela própria interface. Segue fechado para a internet: quem atende 80 e 443
+  # é o proxy.
+  dynamic "ports" {
+    for_each = local.publicar_no_host ? [var.porta_host_api] : []
+    content {
+      internal = var.app_porta
+      external = ports.value
+      ip       = "127.0.0.1"
+    }
+  }
+
 
   depends_on = [docker_container.postgres]
 

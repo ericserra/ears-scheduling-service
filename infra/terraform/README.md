@@ -14,6 +14,31 @@ internet ──443──► traefik ──┐
 Duas redes: o Traefik não alcança o banco, e a rede de dados é `internal`, sem
 rota para fora.
 
+## Quando a VPS já tem um proxy
+
+`usar_traefik = false` desliga o Traefik desta stack, para VPS que já serve 80 e
+443 por Easypanel, nginx ou outro Traefik. Sem isso o container não sobe: as
+portas já têm dono, e o `apply` falha.
+
+```
+internet ──443──► proxy existente ──┬── rede do proxy ──► api ──┐
+                                    │                           ├─► postgres
+                                    └── ou 127.0.0.1:8080       │
+```
+
+A API passa a ser alcançável de dois jeitos, e você usa o que o seu proxy
+entender:
+
+- **pela rede docker**, quando o proxy lê labels do container. Informe
+  `rede_proxy_externa` com o nome da rede (veja em `docker network ls`) e as
+  labels do Traefik já vão no container.
+- **pela porta do host**, publicada em `127.0.0.1:8080` e nunca na internet. É
+  o caminho do Easypanel, que roteia pela própria interface em vez de ler
+  labels: crie lá o serviço apontando para essa porta.
+
+Com proxy externo, TLS é responsabilidade dele: `acme_email` e `acme_staging`
+não têm efeito, e as fases de certificado do roteiro não se aplicam.
+
 ---
 
 ## Antes de rodar

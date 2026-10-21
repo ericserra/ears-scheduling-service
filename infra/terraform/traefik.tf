@@ -1,11 +1,16 @@
+# Todo este arquivo só existe quando usar_traefik = true. Com proxy externo,
+# nada aqui é criado: as portas 80 e 443 já têm dono.
+
 resource "docker_image" "traefik" {
+  count        = var.usar_traefik ? 1 : 0
   name         = "traefik:v3.1"
   keep_locally = true
 }
 
 resource "docker_container" "traefik" {
+  count    = var.usar_traefik ? 1 : 0
   name     = "${var.projeto}-traefik"
-  image    = docker_image.traefik.image_id
+  image    = docker_image.traefik[0].image_id
   restart  = "unless-stopped"
   must_run = true
 
@@ -25,7 +30,7 @@ resource "docker_container" "traefik" {
 
       # A API está em duas redes; sem isto o Traefik pode escolher a de dados e
       # tentar rotear por um endereço que não alcança.
-      "--providers.docker.network=${docker_network.edge.name}",
+      "--providers.docker.network=${local.rede_proxy}",
 
       "--entrypoints.web.address=:80",
       "--entrypoints.web.http.redirections.entrypoint.to=websecure",
@@ -62,12 +67,12 @@ resource "docker_container" "traefik" {
   }
 
   volumes {
-    volume_name    = docker_volume.traefik_acme.name
+    volume_name    = docker_volume.traefik_acme[0].name
     container_path = "/letsencrypt"
   }
 
   networks_advanced {
-    name = docker_network.edge.name
+    name = docker_network.edge[0].name
   }
 
   env = ["TZ=${var.fuso_horario}"]

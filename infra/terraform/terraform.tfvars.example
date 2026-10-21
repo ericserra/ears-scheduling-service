@@ -3,14 +3,31 @@
 #   cp terraform.tfvars.example terraform.tfvars
 #   chmod 600 terraform.tfvars
 
+# --- Proxy -----------------------------------------------------------------
+# true cria o Traefik desta stack, ocupando 80 e 443.
+# false quando a VPS já tem proxy nessas portas (Easypanel, nginx, outro
+# Traefik): nada de proxy é criado, e a API fica disponível para ele.
+usar_traefik = false
+
+# Rede docker do proxy existente. Descubra com: docker network ls
+# No Easypanel costuma ser "easypanel". Vazio deixa só a porta do host.
+rede_proxy_externa = ""
+
+# Porta no host, publicada só em 127.0.0.1. É o alvo para o qual você aponta
+# o proxy existente.
+porta_host_api = 8080
+
 # --- Domínio e TLS ---------------------------------------------------------
 # Antes do apply: registro A de api.exemplo.com.br apontando para o IP da VPS,
 # já propagado. Confira com: dig +short api.exemplo.com.br
-dominio    = "api.exemplo.com.br"
-acme_email = "eric@strenos.com.br"
+# Provisório: o DNS do strenos.com.br é seu e o registro sai na hora.
+# O definitivo é api.clinicaears.com.br, que depende de quem administra
+# aquela zona. Trocar depois é mudar esta linha e dar apply.
+dominio = "ears.strenos.com.br"
 
-# Deixe true na primeira subida. Depois que o roteamento responder, vire para
-# false e rode o apply de novo para pegar o certificado de verdade.
+# Os dois abaixo só valem com usar_traefik = true. Com proxy externo, quem
+# emite e renova certificado é ele.
+acme_email   = "eric@strenos.com.br"
 acme_staging = true
 
 # --- Aplicação -------------------------------------------------------------
