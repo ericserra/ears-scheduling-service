@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Amplimed - EARS (Strenos)",
-    "description": "Coleção de testes da integração EARS.\n\nFluxo: abra \"00 Autenticação > Gerar Token\" e clique em Send. O script de teste grava o access_token numa variável da coleção, e TODAS as requisições passam a mandar Authorization: Bearer com ele, porque a autenticação está definida no nível da coleção e as pastas herdam.\n\nFallback: cada requisição de Pacientes e de Agendamento carrega também o cabeçalho x-Authorization / x-authorization que a documentação da Amplimed descreve, mas desmarcado. Se alguma rota devolver 401 com Bearer, basta marcar a caixa do cabeçalho na aba Headers e preencher a variável correspondente.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.",
+    "description": "Coleção de testes da integração EARS.\n\nFluxo: abra \"00 Autenticação > Gerar Token\" e clique em Send. O script de teste grava o access_token numa variável da coleção, e TODAS as requisições passam a mandar Authorization: Bearer com ele, porque a autenticação está definida no nível da coleção e as pastas herdam.\n\nFallback: cada requisição de Pacientes e de Agendamento carrega também o cabeçalho x-Authorization / x-authorization que a documentação da Amplimed descreve, mas desmarcado. Se alguma rota devolver 401 com Bearer, basta marcar a caixa do cabeçalho na aba Headers e preencher a variável correspondente.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.\n\nAmbientes da API de Dados (hr): produção https://hr.amplimed.com.br, homologação https://stghr.amplimed.cloud, dev https://devhr.amplimed.cloud. São hosts diferentes dos do gateway de Agendamento e Pacientes (integracoes.amplimed.com.br / stgintegracoes.amplimed.cloud).\n\nO login responde 201, não 200. O token dura cerca de 1 hora; se uma chamada de dados voltar 401, clique em Gerar Token de novo.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -75,7 +75,7 @@
     },
     {
       "key": "usuclin",
-      "value": "",
+      "value": "57622",
       "type": "string"
     },
     {
@@ -113,8 +113,9 @@
                   "    console.log('Resposta sem access_token: ' + pm.response.text());",
                   "}",
                   "",
-                  "pm.test('Respondeu 200', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "// O login responde 201, não 200.",
+                  "pm.test('Respondeu 200 ou 201', function () {",
+                  "    pm.expect(pm.response.code, 'código inesperado').to.be.oneOf([200, 201]);",
                   "});",
                   "",
                   "pm.test('Veio access_token', function () {",
@@ -167,7 +168,12 @@
           "name": "Listar Clínicas",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_dados}}/data-api/list-clinics?page=1&pageSize=50",
               "host": [
@@ -189,13 +195,44 @@
               ]
             },
             "description": "Comece por aqui: é desta resposta que sai o usuclin, o número da clínica exigido em quase todas as outras rotas."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A resposta vem envelopada: { success, message, data: { usuclins: [...] }, pagination }.",
+                  "// Guardar o primeiro usuclin aqui evita copiar o número à mão para as outras rotas.",
+                  "let corpo = {};",
+                  "try { corpo = pm.response.json(); } catch (e) { corpo = {}; }",
+                  "",
+                  "const lista = (corpo.data && corpo.data.usuclins) || [];",
+                  "",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('usuclin', String(lista[0]));",
+                  "    console.log('usuclin salvo: ' + lista[0] + (lista.length > 1 ? ' (de ' + lista.length + ' clínicas)' : ''));",
+                  "} else {",
+                  "    console.log('Nenhuma clínica na resposta: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "pm.test('Respondeu 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Veio ao menos uma clínica', function () { pm.expect(lista).to.not.be.empty; });"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Listar Pacientes da Clínica",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_dados}}/data-api/list-patients/{{usuclin}}?page=1&pageSize=50",
               "host": [
@@ -207,6 +244,12 @@
                 "{{usuclin}}"
               ],
               "query": [
+                {
+                  "key": "codp",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Código do paciente. Preferir consulta por codp a varrer a base inteira."
+                },
                 {
                   "key": "page",
                   "value": "1"
@@ -224,7 +267,12 @@
           "name": "Listar Agendamentos",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{base_dados}}/data-api/list-appointments/{{usuclin}}?datahora-inicial=&datahora-final=&page=1&pageSize=50",
               "host": [
@@ -304,6 +352,10 @@
             "method": "GET",
             "header": [
               {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
                 "key": "x-Authorization",
                 "value": "Basic {{basic_token_client}}",
                 "disabled": true,
@@ -339,6 +391,10 @@
           "request": {
             "method": "GET",
             "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
               {
                 "key": "x-Authorization",
                 "value": "Basic {{basic_token_client}}",
@@ -386,6 +442,10 @@
             "method": "GET",
             "header": [
               {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
                 "key": "x-authorization",
                 "value": "{{token_agendamento}}",
                 "disabled": true,
@@ -421,6 +481,10 @@
           "request": {
             "method": "GET",
             "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
               {
                 "key": "x-authorization",
                 "value": "{{token_agendamento}}",
