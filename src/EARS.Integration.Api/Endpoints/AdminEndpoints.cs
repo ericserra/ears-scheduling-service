@@ -1,9 +1,11 @@
 using EARS.Integration.Application.Abstractions;
+using EARS.Integration.Application.Dtos;
 using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.ValueObjects;
 using EARS.Integration.Infrastructure.Clients;
+using EARS.Integration.Infrastructure.Clients.Amplimed;
 using EARS.Integration.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -130,6 +132,52 @@ public static class AdminEndpoints
             return Results.NoContent();
         })
         .WithSummary("Registra um telefone na lista de descadastro.");
+
+        // Responde à pergunta que a documentação deixou em aberto: o "Buscar
+        // Paciente" aceita mesmo o filtro de CPF, ou devolve a lista inteira?
+        // Se devolver tudo, casar pelo primeiro registro marcaria consulta no
+        // nome de outra pessoa, então o client confere o CPF por conta.
+        grupo.MapGet("/amplimed/paciente", async (
+            string cpf,
+            IAmplimedPacientesClient pacientes,
+            IOptions<AmplimedOptions> opcoes,
+            CancellationToken ct) =>
+        {
+            if (!Cpf.TryCreate(cpf, out var documento) || documento is null)
+                return Results.BadRequest(new { erro = "CPF inválido." });
+
+            var host = opcoes.Value.Pacientes.BaseUrl;
+
+            try
+            {
+                var devolvidos = await pacientes.ListarAsync(
+                    new FiltroPacientes(Cpf: documento.Value, Pagina: 1), ct);
+
+                var comOCpf = devolvidos.Where(p => p.Cpf == documento.Value).ToList();
+
+                return Results.Ok(new
+                {
+                    host,
+                    cpf = documento.Value,
+                    totalDevolvido = devolvidos.Count,
+                    comOCpfPedido = comOCpf.Count,
+                    // null quando a resposta veio vazia: aí não dá para concluir nada.
+                    filtroDeCpfRespeitado = devolvidos.Count == 0
+                        ? (bool?)null
+                        : devolvidos.Count == comOCpf.Count,
+                    paciente = comOCpf
+                        .Select(x => new { x.CodReferencia, x.Nome, x.Cpf, x.DataNascimento })
+                        .FirstOrDefault(),
+                });
+            }
+            catch (AmplimedException ex)
+            {
+                return Results.Json(
+                    new { host, cpf = documento.Value, status = (int)ex.Status, erro = ex.Message },
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+        })
+        .WithSummary("Busca um paciente por CPF e diz se a Amplimed respeitou o filtro.");
 
         grupo.MapPost("/sleekflow/teste", async (
             string telefone,
