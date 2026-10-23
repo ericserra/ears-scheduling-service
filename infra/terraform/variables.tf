@@ -61,6 +61,19 @@ variable "usar_traefik" {
   default = true
 }
 
+variable "traefik_image" {
+  description = <<-TXT
+    Imagem do Traefik.
+
+    Não desça abaixo da v3.6.1. Até a v3.6.0 o provider pedia a API do Docker
+    na versão 1.24, fixa, sem negociar; o Docker 29 subiu o mínimo para 1.40 e
+    o provider morre com "client version 1.24 is too old". O sintoma é cruel:
+    os containers sobem saudáveis, mas nenhuma rota existe e tudo responde 404.
+  TXT
+  type    = string
+  default = "traefik:v3.6.1"
+}
+
 variable "rede_proxy_externa" {
   description = <<-TXT
     Nome da rede docker do proxy existente, quando usar_traefik = false.

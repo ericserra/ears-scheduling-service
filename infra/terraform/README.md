@@ -146,6 +146,30 @@ dê apply: o container é recriado com o novo ambiente, sem rebuild.
 
 ---
 
+## Traefik precisa ser v3.6.1 ou mais novo
+
+Até a v3.6.0 o provider do Docker pedia a API na versão 1.24, fixa, sem
+negociar. O Docker 29 subiu o mínimo aceito para 1.40, e o provider morre com:
+
+```
+ERR Provider error, retrying in 1.5s
+    error="client version 1.24 is too old. Minimum supported API version is 1.40"
+```
+
+O sintoma engana: os três containers sobem e ficam `healthy`, o TLS responde,
+e **tudo devolve 404** — porque sem o provider o Traefik não conhece rota
+nenhuma. Olhar só o `docker ps` não mostra o problema; o log do Traefik sim.
+
+Se por algum motivo você precisar manter um Traefik antigo, o paliativo é do
+lado do daemon, em `/etc/docker/daemon.json`:
+
+```json
+{ "min-api-version": "1.24" }
+```
+
+Valide com `dockerd --validate` e reinicie o Docker. É um downgrade que vale
+para todos os clientes da máquina, então sirva-se dele só até atualizar.
+
 ## Duas coisas para saber antes de confiar
 
 **O state guarda os segredos em texto puro.** Tokens da Amplimed, chave do

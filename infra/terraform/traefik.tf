@@ -3,7 +3,7 @@
 
 resource "docker_image" "traefik" {
   count        = var.usar_traefik ? 1 : 0
-  name         = "traefik:v3.1"
+  name         = var.traefik_image
   keep_locally = true
 }
 
