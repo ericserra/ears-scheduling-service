@@ -1,12 +1,32 @@
 {
   "info": {
     "name": "Amplimed - EARS (Strenos)",
-    "description": "Coleção de testes da integração EARS.\n\nFluxo: abra \"00 Autenticação > Gerar Token\" e clique em Send. O script de teste grava o access_token na variável da coleção, e todas as requisições da pasta \"API de Dados\" passam a usá-lo sozinhas.\n\nAs pastas \"API Cadastro de Pacientes\" e \"API Agendamento\" NÃO usam esse token: elas autenticam por x-Authorization e x-authorization, com chaves que a Amplimed emite à parte.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId, clientSecret, basic_token_client, token_agendamento, identifier e usuclin em Variables, e não commite os valores de volta.",
+    "description": "Coleção de testes da integração EARS.\n\nFluxo: abra \"00 Autenticação > Gerar Token\" e clique em Send. O script de teste grava o access_token numa variável da coleção, e TODAS as requisições passam a mandar Authorization: Bearer com ele, porque a autenticação está definida no nível da coleção e as pastas herdam.\n\nFallback: cada requisição de Pacientes e de Agendamento carrega também o cabeçalho x-Authorization / x-authorization que a documentação da Amplimed descreve, mas desmarcado. Se alguma rota devolver 401 com Bearer, basta marcar a caixa do cabeçalho na aba Headers e preencher a variável correspondente.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
-    "type": "noauth"
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('access_token') && !pm.request.url.toString().includes('/oauth/login')) {",
+          "    console.warn('access_token vazio. Rode \"00 Autenticação > Gerar Token\" antes desta requisição.');",
+          "}"
+        ]
+      }
+    }
+  ],
   "variable": [
     {
       "key": "base_dados",
@@ -134,37 +154,14 @@
                 "login"
               ]
             },
-            "description": "Gera o token da API de Dados.\n\nO script na aba Tests grava o access_token na variável da coleção. Depois disso, é só usar qualquer requisição da pasta \"API de Dados\": o Bearer vai sozinho.\n\nCampos em camelCase. clientId e clientSecret em snake_case devolvem erro de validação."
+            "description": "Gera o token. O script na aba Tests grava o access_token na variável da coleção, e daí em diante toda requisição desta coleção sai com Authorization: Bearer.\n\nEsta é a única requisição marcada como No Auth, porque ela é quem produz o token.\n\nCampos em camelCase. clientId e clientSecret em snake_case devolvem erro de validação."
           }
         }
       ]
     },
     {
       "name": "API de Dados",
-      "description": "Herda Bearer {{access_token}}. Rode a autenticação antes.",
-      "auth": {
-        "type": "bearer",
-        "bearer": [
-          {
-            "key": "token",
-            "value": "{{access_token}}",
-            "type": "string"
-          }
-        ]
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.collectionVariables.get('access_token')) {",
-              "    console.warn('access_token vazio. Rode \"00 Autenticação > Gerar Token\" antes desta requisição.');",
-              "}"
-            ]
-          }
-        }
-      ],
+      "description": "Herda Bearer {{access_token}} da coleção.",
       "item": [
         {
           "name": "Listar Clínicas",
@@ -263,10 +260,7 @@
     },
     {
       "name": "API Cadastro de Pacientes",
-      "description": "NÃO usa o token da autenticação acima. Autentica por x-Authorization com um Basic emitido pela Amplimed, guardado na variável basic_token_client.\n\nO valor que já está lá é base64 de clientId:clientSecret, um palpite. Se der 401, é porque a Amplimed emite um token próprio para esta API e ele precisa ser pedido.",
-      "auth": {
-        "type": "noauth"
-      },
+      "description": "Herda Bearer {{access_token}} da coleção.\n\nO cabeçalho x-Authorization que a documentação descreve vem junto em cada requisição, desmarcado. Marque e preencha basic_token_client se alguma rota recusar o Bearer.",
       "item": [
         {
           "name": "Buscar Paciente por CPF",
@@ -311,7 +305,9 @@
             "header": [
               {
                 "key": "x-Authorization",
-                "value": "Basic {{basic_token_client}}"
+                "value": "Basic {{basic_token_client}}",
+                "disabled": true,
+                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
               }
             ],
             "url": {
@@ -345,7 +341,9 @@
             "header": [
               {
                 "key": "x-Authorization",
-                "value": "Basic {{basic_token_client}}"
+                "value": "Basic {{basic_token_client}}",
+                "disabled": true,
+                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
               }
             ],
             "url": {
@@ -380,10 +378,7 @@
     },
     {
       "name": "API Agendamento",
-      "description": "Também não usa o token da autenticação. O identificador vai no CAMINHO da rota e o token no cabeçalho x-authorization, em minúsculas.",
-      "auth": {
-        "type": "noauth"
-      },
+      "description": "Herda Bearer {{access_token}} da coleção.\n\nO identificador vai no CAMINHO da rota, não em cabeçalho. O x-authorization documentado vem junto, desmarcado, como fallback.",
       "item": [
         {
           "name": "Listar Profissionais",
@@ -392,7 +387,9 @@
             "header": [
               {
                 "key": "x-authorization",
-                "value": "{{token_agendamento}}"
+                "value": "{{token_agendamento}}",
+                "disabled": true,
+                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
               }
             ],
             "url": {
@@ -426,7 +423,9 @@
             "header": [
               {
                 "key": "x-authorization",
-                "value": "{{token_agendamento}}"
+                "value": "{{token_agendamento}}",
+                "disabled": true,
+                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
               }
             ],
             "url": {
