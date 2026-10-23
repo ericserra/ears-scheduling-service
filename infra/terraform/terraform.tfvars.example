@@ -4,18 +4,17 @@
 #   chmod 600 terraform.tfvars
 
 # --- Proxy -----------------------------------------------------------------
-# true cria o Traefik desta stack, ocupando 80 e 443.
-# false quando a VPS já tem proxy nessas portas (Easypanel, nginx, outro
-# Traefik): nada de proxy é criado, e a API fica disponível para ele.
-usar_traefik = false
+# Numa VPS dedicada e limpa, deixe true: o Traefik desta stack sobe em 80 e 443
+# e cuida do TLS sozinho. Confira antes que as portas estão livres:
+#   ss -tlnp '( sport = :80 or sport = :443 )'
+usar_traefik = true
 
-# Rede docker do proxy existente. Descubra com: docker network ls
-# No Easypanel costuma ser "easypanel". Vazio deixa só a porta do host.
-rede_proxy_externa = ""
-
-# Porta no host, publicada só em 127.0.0.1. É o alvo para o qual você aponta
-# o proxy existente.
-porta_host_api = 8080
+# Só importam com usar_traefik = false, quando a máquina já tem proxy nessas
+# portas (Easypanel, nginx, outro Traefik). Aí a API entra na rede dele e
+# também é publicada em 127.0.0.1:porta_host_api.
+#   docker network ls   para descobrir o nome da rede
+# rede_proxy_externa = "easypanel"
+# porta_host_api     = 8080
 
 # --- Domínio e TLS ---------------------------------------------------------
 # Antes do apply: registro A de api.exemplo.com.br apontando para o IP da VPS,
