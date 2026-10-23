@@ -55,6 +55,10 @@ amplimed_agendamento_token         = ""
 # Número da clínica. Vazio derruba para o cenário B da Cláusula 3ª.
 amplimed_usuclin = ""
 
+# Raiz da API. Só mexa se a SleekFlow indicar outro ambiente que fale o mesmo
+# dialeto desta integração. api.onsleek.ai é outro produto e não funciona aqui.
+# sleekflow_base_url = "https://api.sleekflow.io/"
+
 sleekflow_api_key        = ""
 sleekflow_webhook_secret = ""
 

@@ -47,6 +47,7 @@ locals {
     "Amplimed__Agendamento__Token"            = var.amplimed_agendamento_token
     "Amplimed__Agendamento__Usuclin"          = var.amplimed_usuclin
 
+    "SleekFlow__BaseUrl"                  = var.sleekflow_base_url
     "SleekFlow__ApiKey"                   = var.sleekflow_api_key
     "SleekFlow__WebhookSecret"            = var.sleekflow_webhook_secret
     "SleekFlow__Canal"                    = var.sleekflow_canal

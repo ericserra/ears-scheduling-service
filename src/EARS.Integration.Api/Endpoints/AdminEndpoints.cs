@@ -3,6 +3,7 @@ using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.ValueObjects;
+using EARS.Integration.Infrastructure.Clients;
 using EARS.Integration.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -135,17 +136,22 @@ public static class AdminEndpoints
             string? texto,
             bool? apenasJanela,
             ISleekFlowClient sleekFlow,
+            IOptions<SleekFlowOptions> opcoes,
             CancellationToken ct) =>
         {
             if (!Telefone.TryCreate(telefone, out var destino) || destino is null)
                 return Results.BadRequest(new { erro = "Telefone inválido. Use DDI e DDD, ex.: 5551999998888." });
+
+            // Devolvido em toda resposta: sem isto, um 401 por host errado e um
+            // 401 por chave errada ficam indistinguíveis de fora.
+            var host = opcoes.Value.BaseUrl;
 
             // A janela de 24h é consulta, não envio: dá para checar a credencial
             // sem mandar mensagem para ninguém.
             var janela = await sleekFlow.JanelaDe24hAbertaAsync(destino.Value, ct);
 
             if (apenasJanela == true)
-                return Results.Ok(new { telefone = destino.Value, janela24h = janela, envio = (object?)null });
+                return Results.Ok(new { host, telefone = destino.Value, janela24h = janela, envio = (object?)null });
 
             var envio = await sleekFlow.EnviarTextoAsync(
                 destino.Value,
@@ -154,6 +160,7 @@ public static class AdminEndpoints
 
             return Results.Ok(new
             {
+                host,
                 telefone = destino.Value,
                 janela24h = janela,
                 envio = new { envio.Sucesso, envio.MensagemId, envio.Erro },

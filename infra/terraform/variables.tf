@@ -272,6 +272,21 @@ variable "amplimed_usuclin" {
   default = ""
 }
 
+variable "sleekflow_base_url" {
+  description = <<-TXT
+    Raiz da API da SleekFlow, com barra final. O padrão é a Platform API de
+    produção, que autentica pelo cabeçalho X-Sleekflow-Api-Key.
+
+    Trocar esta raiz só resolve se o outro ambiente falar o MESMO dialeto:
+    mesmas rotas (api/message/send/json, api/contact/addOrUpdate,
+    api/whatsapp/reply-window-status) e o mesmo cabeçalho. O produto novo da
+    SleekFlow (https://api.onsleek.ai/) NÃO serve aqui: usa Authorization:
+    Bearer e outras rotas, então apontar para lá troca o 401 por 404.
+  TXT
+  type    = string
+  default = "https://api.sleekflow.io/"
+}
+
 variable "sleekflow_api_key" {
   description = "Chave da Platform API. Vai no cabeçalho X-Sleekflow-Api-Key, não como Bearer."
   type        = string
