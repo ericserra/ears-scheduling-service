@@ -54,6 +54,19 @@ output "proxy" {
   )
 }
 
+output "pronto_para_atender" {
+  description = "Se o motor aceita atendimento, ou se sobe apenas como ambiente à espera de credencial."
+  value = (
+    var.amplimed_pacientes_token != ""
+    && var.amplimed_agendamento_identificador != ""
+    && var.amplimed_agendamento_token != ""
+    && var.sleekflow_api_key != ""
+    && var.sleekflow_remetente != ""
+    ? "sim"
+    : "não — o motor responde 503 em /webhooks/sleekflow/atendimento. Veja /admin/prontidao."
+  )
+}
+
 output "containers" {
   value = merge(
     {

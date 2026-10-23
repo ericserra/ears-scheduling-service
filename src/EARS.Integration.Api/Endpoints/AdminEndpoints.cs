@@ -129,6 +129,18 @@ public static class AdminEndpoints
         })
         .WithSummary("Registra um telefone na lista de descadastro.");
 
+        grupo.MapGet("/prontidao", (IProntidaoIntegracao prontidao) => Results.Ok(new
+        {
+            pronta = prontidao.Pronta,
+            amplimed = prontidao.AmplimedConfigurada,
+            sleekflow = prontidao.SleekFlowConfigurado,
+            pendencias = prontidao.Pendencias,
+            observacao = prontidao.Pronta
+                ? "Configuração completa. O motor aceita atendimento."
+                : "Configuração incompleta. O motor recusa abrir atendimento e devolve 503 ao Flow Builder.",
+        }))
+        .WithSummary("O que falta configurar para o motor atender de ponta a ponta.");
+
         grupo.MapGet("/config", (IOptions<AutomacaoOptions> options) =>
             Results.Ok(options.Value))
         .WithSummary("Exibe os parâmetros de automação em vigor.");

@@ -115,6 +115,7 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `POST` | `/admin/agenda/sincronizar?dia=` | força o polling da agenda da Amplimed |
 | `POST` | `/admin/conversas/expirar` | expira conversas paradas e libera etiquetas |
 | `GET` | `/admin/conversas/etiquetas-presas` | pacientes que ficaram sem menu |
+| `GET` | `/admin/prontidao` | o que falta configurar para o motor atender |
 | `POST` | `/admin/opt-out?telefone=` | registra descadastro |
 | `GET` | `/admin/config` | parâmetros em vigor |
 
@@ -178,6 +179,19 @@ Os endpoints `/admin` exigem o cabeçalho `X-Api-Key`.
   só é aceito quando inequívoco. Na dúvida, escala para atendimento humano.
 - **Não há terceira mensagem.** Após o lembrete único, o agendamento é marcado como não
   confirmado e vira tarefa da recepção.
+
+## Subir antes das credenciais
+
+O serviço sobe com as credenciais da Amplimed e do SleekFlow em branco, para o
+ambiente existir enquanto elas são negociadas. Nesse estado ele **recusa
+atendimento**: `/webhooks/sleekflow/atendimento` responde `503` e o Flow Builder
+deve cair no ramo de erro, mandando o paciente para a Recepção.
+
+A recusa é por construção, não por disciplina. Um atendimento que começa e trava
+no meio aplica a etiqueta `agendamento-em-curso` e deixa o paciente sem menu —
+pior do que nunca ter começado.
+
+`GET /admin/prontidao` lista o que falta. O log da subida diz a mesma coisa.
 
 ## Deploy
 

@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IOptOutRepository, OptOutRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddSingleton<IRelogio, Relogio>();
+        services.AddSingleton<IProntidaoIntegracao, ProntidaoIntegracao>();
 
         services.AddScoped<ProcessarMensagemRecebidaUseCase>();
         services.AddScoped<IDialogoAtendimento>(sp => sp.GetRequiredService<ProcessarMensagemRecebidaUseCase>());

@@ -23,6 +23,7 @@ public sealed class IniciarAtendimentoUseCase(
     IConversaRepository conversas,
     IDialogoAtendimento dialogo,
     ISleekFlowClient sleekFlow,
+    IProntidaoIntegracao prontidao,
     IUnitOfWork uow,
     IOptions<AutomacaoOptions> options,
     ILogger<IniciarAtendimentoUseCase> logger)
@@ -32,6 +33,19 @@ public sealed class IniciarAtendimentoUseCase(
     public async Task<ResultadoInicio> ExecutarAsync(
         IniciarAtendimentoRequest request, CancellationToken ct = default)
     {
+        // Recusa sem efeito colateral nenhum: nenhuma conversa criada, nenhuma
+        // etiqueta aplicada. Um atendimento que começa e trava no meio deixa o
+        // paciente etiquetado e sem menu, que é pior do que nunca ter começado.
+        // O Flow Builder trata a recusa pelo ramo de erro, mandando à Recepção.
+        if (!prontidao.Pronta)
+        {
+            logger.LogWarning(
+                "Atendimento recusado para {Telefone}: configuração incompleta. Pendências: {Pendencias}",
+                request.Telefone, string.Join(", ", prontidao.Pendencias));
+
+            return ResultadoInicio.Recusado("configuracao-incompleta");
+        }
+
         var emCurso = await conversas.ObterAtivaPorTelefoneAsync(request.Telefone, ct);
 
         if (emCurso is not null && !emCurso.Expirada(_opcoes.ExpiracaoConversa))

@@ -67,7 +67,11 @@ public static class WebhookEndpoints
                     corpo.Telefone!, motivo, corpo.ContatoId, corpo.ConversaId, corpo.Nome),
                 ct);
 
-            return Results.Ok(resultado);
+            // 503 para o Flow Builder cair no ramo de erro e mandar à Recepção,
+            // em vez de achar que o motor assumiu a conversa.
+            return resultado.Aceito
+                ? Results.Ok(resultado)
+                : Results.Json(resultado, statusCode: StatusCodes.Status503ServiceUnavailable);
         })
         .WithName("IniciarAtendimento")
         .WithSummary("Entrega a conversa ao motor, a partir dos ramos 1 e 3 do menu.");

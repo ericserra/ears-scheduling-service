@@ -51,6 +51,7 @@ public sealed record ResultadoSincronizacao(
 public sealed class SincronizarAgendaUseCase(
     IAmplimedAgendamentoClient agendamentoClient,
     IAmplimedPacientesClient pacientesClient,
+    IProntidaoIntegracao prontidao,
     IPacienteRepository pacientes,
     IAgendamentoRepository agendamentos,
     IUnitOfWork uow,
@@ -63,6 +64,15 @@ public sealed class SincronizarAgendaUseCase(
     /// <summary>Sincroniza a janela configurada a partir de hoje.</summary>
     public async Task<ResultadoSincronizacao> ExecutarAsync(CancellationToken ct = default)
     {
+        // Sem credencial da Amplimed não há o que sincronizar, e insistir a
+        // cada quinze minutos só enche o log de erro enquanto o ambiente
+        // espera as chaves chegarem.
+        if (!prontidao.AmplimedConfigurada)
+        {
+            logger.LogDebug("Polling da agenda ocioso: credenciais da Amplimed ainda não configuradas.");
+            return ResultadoSincronizacao.Vazio;
+        }
+
         if (!_opcoes.LeituraAgendaViaApi)
         {
             logger.LogInformation(

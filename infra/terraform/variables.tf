@@ -225,6 +225,9 @@ variable "amplimed_base_url" {
 }
 
 variable "amplimed_pacientes_token" {
+  # Opcional de propósito: o ambiente sobe antes das credenciais chegarem.
+  # Vazio faz o motor recusar atendimento (503) em vez de atender pela metade.
+  default     = ""
   description = "Token da API de Cadastro de Pacientes (vai como Basic no x-Authorization)."
   type        = string
   sensitive   = true
@@ -234,9 +237,13 @@ variable "amplimed_agendamento_identificador" {
   description = "Identificador da API de Agendamento. Vai no caminho da rota."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "amplimed_agendamento_token" {
+  # Opcional de propósito: o ambiente sobe antes das credenciais chegarem.
+  # Vazio faz o motor recusar atendimento (503) em vez de atender pela metade.
+  default     = ""
   description = "Token da API de Agendamento (cabeçalho x-authorization)."
   type        = string
   sensitive   = true
@@ -256,6 +263,7 @@ variable "sleekflow_api_key" {
   description = "Chave da Platform API. Vai no cabeçalho X-Sleekflow-Api-Key, não como Bearer."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "sleekflow_canal" {
@@ -275,11 +283,12 @@ variable "sleekflow_remetente" {
     Obrigatório: o endpoint de envio exige o campo "from", e sem ele nenhuma
     mensagem sai.
   TXT
-  type = string
+  type    = string
+  default = ""
 
   validation {
-    condition     = can(regex("^[0-9]{10,15}$", var.sleekflow_remetente))
-    error_message = "Só dígitos, com DDI e sem o sinal de mais. Ex.: 5551999998888."
+    condition     = var.sleekflow_remetente == "" || can(regex("^[0-9]{10,15}$", var.sleekflow_remetente))
+    error_message = "Só dígitos, com DDI e sem o sinal de mais. Ex.: 5551999998888. Vazio é aceito enquanto o número não chega."
   }
 }
 
@@ -317,7 +326,13 @@ variable "sleekflow_staff_id_recepcao" {
 }
 
 variable "sleekflow_webhook_secret" {
-  description = "Segredo compartilhado que o serviço confere no webhook."
+  description = <<-TXT
+    Segredo compartilhado que o serviço confere no webhook.
+
+    Segue obrigatório mesmo numa subida sem as demais credenciais: ele é o que
+    impede qualquer um de postar nos endpoints públicos. Vazio desliga a
+    verificação.
+  TXT
   type        = string
   sensitive   = true
 }
