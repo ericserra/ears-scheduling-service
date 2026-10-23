@@ -2,6 +2,7 @@ using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
+using EARS.Integration.Domain.ValueObjects;
 using EARS.Integration.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -128,6 +129,40 @@ public static class AdminEndpoints
             return Results.NoContent();
         })
         .WithSummary("Registra um telefone na lista de descadastro.");
+
+        grupo.MapPost("/sleekflow/teste", async (
+            string telefone,
+            string? texto,
+            bool? apenasJanela,
+            ISleekFlowClient sleekFlow,
+            CancellationToken ct) =>
+        {
+            if (!Telefone.TryCreate(telefone, out var destino) || destino is null)
+                return Results.BadRequest(new { erro = "Telefone inválido. Use DDI e DDD, ex.: 5551999998888." });
+
+            // A janela de 24h é consulta, não envio: dá para checar a credencial
+            // sem mandar mensagem para ninguém.
+            var janela = await sleekFlow.JanelaDe24hAbertaAsync(destino.Value, ct);
+
+            if (apenasJanela == true)
+                return Results.Ok(new { telefone = destino.Value, janela24h = janela, envio = (object?)null });
+
+            var envio = await sleekFlow.EnviarTextoAsync(
+                destino.Value,
+                string.IsNullOrWhiteSpace(texto) ? "Teste de integração do motor Strenos." : texto,
+                ct);
+
+            return Results.Ok(new
+            {
+                telefone = destino.Value,
+                janela24h = janela,
+                envio = new { envio.Sucesso, envio.MensagemId, envio.Erro },
+                observacao = janela == false
+                    ? "Janela de 24h fechada: fora dela a Meta só aceita template aprovado, então texto livre falha."
+                    : null,
+            });
+        })
+        .WithSummary("Exercita a credencial do SleekFlow sem depender da Amplimed. apenasJanela=true consulta sem enviar.");
 
         grupo.MapGet("/prontidao", (IProntidaoIntegracao prontidao) => Results.Ok(new
         {

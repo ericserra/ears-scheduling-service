@@ -116,6 +116,7 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `POST` | `/admin/conversas/expirar` | expira conversas paradas e libera etiquetas |
 | `GET` | `/admin/conversas/etiquetas-presas` | pacientes que ficaram sem menu |
 | `GET` | `/admin/prontidao` | o que falta configurar para o motor atender |
+| `POST` | `/admin/sleekflow/teste?telefone=` | exercita a credencial do SleekFlow sem a Amplimed |
 | `POST` | `/admin/opt-out?telefone=` | registra descadastro |
 | `GET` | `/admin/config` | parâmetros em vigor |
 
