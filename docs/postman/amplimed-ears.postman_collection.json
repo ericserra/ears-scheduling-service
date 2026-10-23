@@ -1,32 +1,12 @@
 {
   "info": {
     "name": "Amplimed - EARS (Strenos)",
-    "description": "Coleção de testes da integração EARS.\n\nFluxo: abra \"00 Autenticação > Gerar Token\" e clique em Send. O script de teste grava o access_token numa variável da coleção, e TODAS as requisições passam a mandar Authorization: Bearer com ele, porque a autenticação está definida no nível da coleção e as pastas herdam.\n\nFallback: cada requisição de Pacientes e de Agendamento carrega também o cabeçalho x-Authorization / x-authorization que a documentação da Amplimed descreve, mas desmarcado. Se alguma rota devolver 401 com Bearer, basta marcar a caixa do cabeçalho na aba Headers e preencher a variável correspondente.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.\n\nAmbientes da API de Dados (hr): produção https://hr.amplimed.com.br, homologação https://stghr.amplimed.cloud, dev https://devhr.amplimed.cloud. São hosts diferentes dos do gateway de Agendamento e Pacientes (integracoes.amplimed.com.br / stgintegracoes.amplimed.cloud).\n\nO login responde 201, não 200. O token dura cerca de 1 hora; se uma chamada de dados voltar 401, clique em Gerar Token de novo.",
+    "description": "Coleção de testes da integração EARS.\n\nSão DUAS APIs com credenciais diferentes, e isso define a estrutura desta coleção.\n\n1. API de Dados (hr.amplimed.com.br). Somente leitura. Login em /oauth/login devolve um Bearer. Abra \"00 Autenticação > Gerar Token\" e clique em Send: o script grava o access_token numa variável da coleção e a pasta \"API de Dados\" herda Bearer {{access_token}}. Temos essas credenciais.\n\n2. Gateway de Integrações (integracoes.amplimed.com.br). É quem permite escrever. Autentica por x-authorization (agendamento) e x-Authorization: Basic (pacientes), com o identifier no caminho da URL. O Bearer da API de Dados NÃO funciona aqui: devolve 401 \"Wrong credentials!\". Confirmado em teste pelo cliente em 23/10/2026. Essas credenciais ainda não existem do nosso lado.\n\nPor isso as pastas do gateway ficam como No Auth, com o cabeçalho próprio. Enquanto identifier e tokens não chegarem, elas vão responder 401, e isso é o esperado.\n\nAmbientes da API de Dados: produção hr.amplimed.com.br, homologação stghr.amplimed.cloud, dev devhr.amplimed.cloud. Do gateway: integracoes.amplimed.com.br e stgintegracoes.amplimed.cloud. São hosts diferentes, não confundir.\n\nO login responde 201, não 200. O token é um JWT de 3 horas e o expires_at vem em UTC.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
-    "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{access_token}}",
-        "type": "string"
-      }
-    ]
+    "type": "noauth"
   },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "if (!pm.collectionVariables.get('access_token') && !pm.request.url.toString().includes('/oauth/login')) {",
-          "    console.warn('access_token vazio. Rode \"00 Autenticação > Gerar Token\" antes desta requisição.');",
-          "}"
-        ]
-      }
-    }
-  ],
   "variable": [
     {
       "key": "base_dados",
@@ -86,7 +66,7 @@
   ],
   "item": [
     {
-      "name": "00 Autenticação",
+      "name": "00 Autenticação (API de Dados)",
       "item": [
         {
           "name": "Gerar Token (clique aqui primeiro)",
@@ -99,16 +79,13 @@
                   "let corpo = {};",
                   "try { corpo = pm.response.json(); } catch (e) { corpo = {}; }",
                   "",
-                  "// A resposta documentada é { access_token, token_type, expires_at }.",
-                  "// O fallback cobre a variação envelopada em data, que aparece em",
-                  "// outras rotas da mesma API.",
                   "const token = corpo.access_token || (corpo.data && corpo.data.access_token);",
                   "const expira = corpo.expires_at || (corpo.data && corpo.data.expires_at) || '';",
                   "",
                   "if (token) {",
                   "    pm.collectionVariables.set('access_token', token);",
                   "    pm.collectionVariables.set('token_expira_em', expira);",
-                  "    console.log('Token salvo. Expira em: ' + (expira || 'não informado'));",
+                  "    console.log('Token salvo. Expira em (UTC): ' + (expira || 'não informado'));",
                   "} else {",
                   "    console.log('Resposta sem access_token: ' + pm.response.text());",
                   "}",
@@ -155,17 +132,66 @@
                 "login"
               ]
             },
-            "description": "Gera o token. O script na aba Tests grava o access_token na variável da coleção, e daí em diante toda requisição desta coleção sai com Authorization: Bearer.\n\nEsta é a única requisição marcada como No Auth, porque ela é quem produz o token.\n\nCampos em camelCase. clientId e clientSecret em snake_case devolvem erro de validação."
+            "description": "Gera o Bearer da API de Dados. Vale só para a pasta \"API de Dados\": o gateway recusa este token.\n\nCampos em camelCase e corpo em JSON. snake_case ou form-urlencoded devolvem 400 \"The client id field is required\".\n\nO clientId da EARS contém & e _. Em JSON não há problema, mas quebra em query string sem escape ou em shell sem aspas simples.\n\nSucesso é 201. O token é um JWT de 3 horas e o expires_at vem em UTC."
           }
         }
       ]
     },
     {
-      "name": "API de Dados",
-      "description": "Herda Bearer {{access_token}} da coleção.",
+      "name": "API de Dados (Bearer)",
+      "description": "Somente leitura. Herda Bearer {{access_token}}. Rode a autenticação antes.\n\nEnquanto o gateway não tiver credencial, é por aqui que dá para ler agenda e pacientes.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{access_token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('access_token')) {",
+              "    console.warn('access_token vazio. Rode \"00 Autenticação > Gerar Token\" antes desta requisição.');",
+              "}"
+            ]
+          }
+        }
+      ],
       "item": [
         {
           "name": "Listar Clínicas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A resposta vem envelopada: { success, message, data: { usuclins: [...] }, pagination }.",
+                  "// Guardar o primeiro usuclin aqui evita copiar o número à mão para as outras rotas.",
+                  "let corpo = {};",
+                  "try { corpo = pm.response.json(); } catch (e) { corpo = {}; }",
+                  "",
+                  "const lista = (corpo.data && corpo.data.usuclins) || [];",
+                  "",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('usuclin', String(lista[0]));",
+                  "    console.log('usuclin salvo: ' + lista[0] + (lista.length > 1 ? ' (de ' + lista.length + ' clínicas)' : ''));",
+                  "} else {",
+                  "    console.log('Nenhuma clínica na resposta: ' + pm.response.text());",
+                  "}",
+                  "",
+                  "pm.test('Respondeu 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Veio ao menos uma clínica', function () { pm.expect(lista).to.not.be.empty; });"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -194,34 +220,8 @@
                 }
               ]
             },
-            "description": "Comece por aqui: é desta resposta que sai o usuclin, o número da clínica exigido em quase todas as outras rotas."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// A resposta vem envelopada: { success, message, data: { usuclins: [...] }, pagination }.",
-                  "// Guardar o primeiro usuclin aqui evita copiar o número à mão para as outras rotas.",
-                  "let corpo = {};",
-                  "try { corpo = pm.response.json(); } catch (e) { corpo = {}; }",
-                  "",
-                  "const lista = (corpo.data && corpo.data.usuclins) || [];",
-                  "",
-                  "if (lista.length > 0) {",
-                  "    pm.collectionVariables.set('usuclin', String(lista[0]));",
-                  "    console.log('usuclin salvo: ' + lista[0] + (lista.length > 1 ? ' (de ' + lista.length + ' clínicas)' : ''));",
-                  "} else {",
-                  "    console.log('Nenhuma clínica na resposta: ' + pm.response.text());",
-                  "}",
-                  "",
-                  "pm.test('Respondeu 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Veio ao menos uma clínica', function () { pm.expect(lista).to.not.be.empty; });"
-                ]
-              }
-            }
-          ]
+            "description": "Teste de fumaça da autenticação. Se devolver usuclins: [57622], o Bearer está válido."
+          }
         },
         {
           "name": "Listar Pacientes da Clínica",
@@ -259,8 +259,7 @@
                   "value": "50"
                 }
               ]
-            },
-            "description": "Preencha a variável usuclin com o número que veio em Listar Clínicas."
+            }
           }
         },
         {
@@ -285,8 +284,14 @@
               ],
               "query": [
                 {
+                  "key": "id-paciente",
+                  "value": "",
+                  "disabled": true
+                },
+                {
                   "key": "datahora-inicial",
-                  "value": ""
+                  "value": "",
+                  "description": "Formato YYYY-MM-DD 00:00:00"
                 },
                 {
                   "key": "datahora-final",
@@ -301,14 +306,18 @@
                   "value": "50"
                 }
               ]
-            }
+            },
+            "description": "Alternativa de leitura da agenda enquanto o gateway não tem credencial."
           }
         }
       ]
     },
     {
-      "name": "API Cadastro de Pacientes",
-      "description": "Herda Bearer {{access_token}} da coleção.\n\nO cabeçalho x-Authorization que a documentação descreve vem junto em cada requisição, desmarcado. Marque e preencha basic_token_client se alguma rota recusar o Bearer.",
+      "name": "Gateway - Cadastro de Pacientes (x-Authorization)",
+      "description": "NÃO usa o Bearer da API de Dados. Testado em 23/10/2026: com o Bearer devolve 401 \"Wrong credentials!\".\n\nDepende de basic_token_client, que a Amplimed precisa emitir para a clínica 57622. Enquanto estiver vazio, espere 401.",
+      "auth": {
+        "type": "noauth"
+      },
       "item": [
         {
           "name": "Buscar Paciente por CPF",
@@ -322,6 +331,11 @@
                   "// atualização. Se o cpf da querystring for ignorado, a resposta vem com a",
                   "// lista inteira, e casar pelo primeiro registro marcaria consulta no nome",
                   "// de outra pessoa.",
+                  "if (pm.response.code === 401) {",
+                  "    console.log('401 do gateway. Falta a credencial própria dele (basic_token_client).');",
+                  "    return;",
+                  "}",
+                  "",
                   "let corpo = [];",
                   "try {",
                   "    const bruto = pm.response.json();",
@@ -357,9 +371,7 @@
               },
               {
                 "key": "x-Authorization",
-                "value": "Basic {{basic_token_client}}",
-                "disabled": true,
-                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
+                "value": "Basic {{basic_token_client}}"
               }
             ],
             "url": {
@@ -383,7 +395,7 @@
                 }
               ]
             },
-            "description": "A rota é pattient, com dois tês, como na documentação da Amplimed.\n\nO script na aba Tests imprime no Console quantos registros vieram e quantos de fato carregam o CPF pedido, e dá o veredito."
+            "description": "A rota é pattient, com dois tês, como na documentação da Amplimed.\n\nQuando a credencial chegar, o script na aba Tests imprime no Console quantos registros vieram e quantos de fato carregam o CPF pedido, e dá o veredito."
           }
         },
         {
@@ -397,9 +409,7 @@
               },
               {
                 "key": "x-Authorization",
-                "value": "Basic {{basic_token_client}}",
-                "disabled": true,
-                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
+                "value": "Basic {{basic_token_client}}"
               }
             ],
             "url": {
@@ -433,8 +443,11 @@
       ]
     },
     {
-      "name": "API Agendamento",
-      "description": "Herda Bearer {{access_token}} da coleção.\n\nO identificador vai no CAMINHO da rota, não em cabeçalho. O x-authorization documentado vem junto, desmarcado, como fallback.",
+      "name": "Gateway - Agendamento (x-authorization)",
+      "description": "NÃO usa o Bearer da API de Dados. Com ele devolve 401 {\"status\":\"error\",\"message\":\"Unauthorized\"}.\n\nDepende de identifier e token_agendamento, que a Amplimed precisa emitir para a clínica 57622. O identifier vai no CAMINHO da rota, não em cabeçalho.",
+      "auth": {
+        "type": "noauth"
+      },
       "item": [
         {
           "name": "Listar Profissionais",
@@ -447,9 +460,7 @@
               },
               {
                 "key": "x-authorization",
-                "value": "{{token_agendamento}}",
-                "disabled": true,
-                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
+                "value": "{{token_agendamento}}"
               }
             ],
             "url": {
@@ -487,9 +498,7 @@
               },
               {
                 "key": "x-authorization",
-                "value": "{{token_agendamento}}",
-                "disabled": true,
-                "description": "Fallback documentado. Marque só se o Bearer devolver 401."
+                "value": "{{token_agendamento}}"
               }
             ],
             "url": {
@@ -512,10 +521,20 @@
                 {
                   "key": "page",
                   "value": "1"
+                },
+                {
+                  "key": "profissional",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "cpf",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             },
-            "description": "O usuclin vai no caminho, entre o identificador e o nome da rota. Filtros opcionais: profissional e cpf."
+            "description": "O usuclin vai no caminho, entre o identificador e o nome da rota."
           }
         }
       ]

@@ -4,10 +4,10 @@ Documento recebido do cliente em 23/10/2026. Reproduzido aqui como referência
 da integração, com as credenciais substituídas por marcadores.
 
 > **Escopo.** Este manual cobre **apenas a API de Dados** (`hr.amplimed.com.br`),
-> que é somente leitura. As APIs de **Agendamento** e de **Cadastro de Pacientes**,
-> que o motor EARS usa para escrever, vivem em outro gateway
-> (`integracoes.amplimed.com.br`), têm credenciais próprias e não estão cobertas
-> aqui. Ver `docs/adr/0002-leitura-de-agenda.md` e a coleção em `docs/postman/`.
+> que é somente leitura. O **gateway de Integrações**
+> (`integracoes.amplimed.com.br`), que é por onde o motor EARS escreve, usa outra
+> credencial. Ver a seção 2.1, a coleção em `docs/postman/` e
+> `docs/adr/0002-leitura-de-agenda.md`.
 
 ## 1. Visão geral
 
@@ -29,7 +29,45 @@ POST /oauth/login  ──►  access_token (Bearer)  ──►  GET /data-api/..
 São hosts diferentes dos do gateway de Agendamento e Pacientes
 (`integracoes.amplimed.com.br`, `stgintegracoes.amplimed.cloud`). Não confundir.
 
-As credenciais da EARS são de **produção**.
+As credenciais da EARS são de **produção**. Uma integração nova deve começar lendo
+dados (só `GET`) e nunca assumir que um ambiente de testes tem os mesmos dados.
+
+## 2.1 Existem DUAS APIs, com credenciais diferentes
+
+| | **API de Dados** (`hr`) | **Gateway de Integrações** |
+|---|---|---|
+| Host (produção) | `https://hr.amplimed.com.br` | `https://integracoes.amplimed.com.br` |
+| Rotas | `/oauth/login`, `/data-api/...` | `/integracoes/referencia/{identifier}/...` e `/pacientes/integration/pattient` |
+| Autenticação | `clientId` + `clientSecret` → `Authorization: Bearer` | `x-authorization` (agendamento) e `x-Authorization: Basic` (pacientes), mais o `identifier` no caminho |
+| Credenciais da EARS | **Temos** | **Não temos.** Precisam ser emitidas pela Amplimed |
+
+**O Bearer da API de Dados não funciona no gateway.** Testado em 23/10/2026:
+
+- `GET /pacientes/integration/pattient` com o Bearer do `hr` →
+  `401 {"statusCode":401,"message":"Wrong credentials!","error":"Unauthorized"}`
+- `GET /integracoes/referencia/{identifier}/{clinica}/listar-agendamentos` com Bearer,
+  com header inválido ou sem nada → `401 {"status":"error","message":"Unauthorized"}`
+
+O que falta pedir à Amplimed para a clínica 57622, e que no nosso ambiente
+corresponde a:
+
+| Variável do motor | É o quê |
+|---|---|
+| `Amplimed__Agendamento__Identificador` | o `identifier` do caminho da URL de agendamento |
+| `Amplimed__Agendamento__Token` | valor do header `x-authorization` |
+| `Amplimed__Pacientes__Token` | valor do header `x-Authorization: Basic ...` |
+
+Sem esses três, o gateway não responde, e o motor recusa atendimento com 503 em
+vez de atender pela metade.
+
+**Leitura sem o gateway.** A API de Dados já validada em produção cobre:
+
+| Necessidade | Rota |
+|---|---|
+| Agendamentos | `GET /data-api/list-appointments/{clinicId}` |
+| Pacientes | `GET /data-api/list-patients/{clinicId}` |
+
+Escrita (criar ou alterar agendamento, cadastrar paciente) depende do gateway.
 
 ## 3. Credenciais
 
@@ -63,9 +101,17 @@ Resposta de sucesso é **HTTP 201**, não 200:
 }
 ```
 
-A resposta traz `expires_at`, não `expires_in`. O token dura cerca de uma hora.
-Guardar e reutilizar, renovando uns cinco minutos antes de expirar. Um `401` numa
-chamada de dados pede um novo login e uma repetição da chamada.
+A resposta traz `expires_at`, não `expires_in`, **em UTC**. O JWT dura **3 horas**,
+confirmado em 23/10/2026. Guardar e reutilizar, renovando uns cinco minutos antes
+de expirar. Um `401` numa chamada de dados pede um novo login e uma repetição da
+chamada.
+
+O corpo precisa ser JSON. Form-urlencoded ou `snake_case` devolvem
+`400 "The client id field is required"`.
+
+O `clientId` da EARS contém `&` e `_`. Em JSON não é problema, mas quebra se for
+montado em query string sem escape, ou colado em shell sem aspas simples: o `&`
+manda o comando para segundo plano e corta o valor.
 
 ## 5. Chamadas de dados
 
@@ -110,7 +156,11 @@ por período.
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `401` no login | Credenciais erradas, ou campos em snake_case | Conferir valores e usar camelCase |
+| `404 {"msg":"Client not found or inactive"}` no login | Credenciais não existem ou foram desativadas | Conferir os valores, atenção ao `&` do clientId |
+| `400 {"msg":{"clientId":[...]}}` | Corpo não é JSON, ou campos em snake_case | `Content-Type: application/json` e camelCase |
+| `500 "Invalid JWT: Wrong number of segments"` | Header `Authorization` com token malformado ou vazio | Conferir `Bearer <token>` completo |
+| `401 {"message":"Wrong credentials!"}` | É o **gateway**, rota de pacientes, recusando o Bearer da API de Dados | Seção 2.1 |
+| `401 {"status":"error","message":"Unauthorized"}` | Gateway, rota de agendamento, sem `x-authorization` válido ou `identifier` errado | Seção 2.1 |
 | `401` numa chamada de dados | Token expirado ou sem o prefixo `Bearer ` | Refazer o login, conferir o header |
 | `403` ou lista vazia | `clinicId` errado | Usar o que veio de `list-clinics` |
 | `429` | Rate limit | Backoff exponencial, reduzir volume |
