@@ -119,13 +119,19 @@ terraform output -raw postgres_password
 ```bash
 cd /opt/ears/src && git pull
 cd infra/terraform
-terraform apply -var="app_versao=1.0.1"
+terraform apply -var="app_versao=$(git -C /opt/ears/src rev-parse --short HEAD)"
 ```
 
-A versão é o gatilho do rebuild: o conteúdo do diretório **não** é observado
-(hashear a árvore a cada `plan` seria lento e mudaria a cada arquivo gerado pelo
-build). Mudar `app_versao` reconstrói a imagem e recria o container; repetir o
-apply com a mesma versão não faz nada.
+**Use sempre o SHA do commit.** A versão é o gatilho do rebuild: o conteúdo do
+diretório **não** é observado, porque hashear a árvore a cada `plan` seria lento
+e mudaria a cada arquivo gerado pelo build. Repetir o apply com a mesma versão
+não reconstrói nada.
+
+O modo de errar é específico e silencioso: você dá `git pull`, roda
+`terraform apply`, o Terraform recria o container porque alguma variável de
+ambiente mudou, e você fica com **código novo no disco e imagem velha rodando**.
+O sintoma é um endpoint recém-criado respondendo 404 pelo Kestrel. Amarrar a
+versão ao commit elimina a classe inteira do problema.
 
 Para mudar só configuração — cron, janela de envio, template — use `env_extra` e
 dê apply: o container é recriado com o novo ambiente, sem rebuild.
