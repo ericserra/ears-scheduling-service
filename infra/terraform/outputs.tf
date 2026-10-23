@@ -56,12 +56,16 @@ output "proxy" {
 
 output "pronto_para_atender" {
   description = "Se o motor aceita atendimento, ou se sobe apenas como ambiente à espera de credencial."
+  # nonsensitive() aplicado à comparação, não aos valores: o que sai daqui é
+  # apenas "o campo está vazio ou não", que não é segredo. Marcar o output
+  # inteiro como sensitive esconderia justamente a mensagem que interessa.
   value = (
-    var.amplimed_pacientes_token != ""
-    && var.amplimed_agendamento_identificador != ""
-    && var.amplimed_agendamento_token != ""
-    && var.sleekflow_api_key != ""
-    && var.sleekflow_remetente != ""
+    nonsensitive(
+      var.amplimed_pacientes_token != ""
+      && var.amplimed_agendamento_identificador != ""
+      && var.amplimed_agendamento_token != ""
+      && var.sleekflow_api_key != ""
+    ) && var.sleekflow_remetente != ""
     ? "sim"
     : "não — o motor responde 503 em /webhooks/sleekflow/atendimento. Veja /admin/prontidao."
   )
