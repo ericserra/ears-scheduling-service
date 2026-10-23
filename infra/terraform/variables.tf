@@ -232,7 +232,15 @@ variable "admin_ips" {
 }
 
 variable "amplimed_base_url" {
-  description = "Raiz do gateway da Amplimed, com barra final. Homologação: https://stgintegracoes.amplimed.cloud/"
+  description = <<-TXT
+    Raiz do gateway da Amplimed, com barra final. Serve às duas APIs em uso,
+    a de Agendamento e a de Cadastro de Pacientes.
+
+    Ambientes documentados: https://devintegracoes.amplimed.cloud/,
+    https://qaintegracoes.amplimed.cloud/, https://stgintegracoes.amplimed.cloud/
+    e https://integracoes.amplimed.com.br/ (produção). Qual deles vale para a
+    chave recebida é informação da Amplimed, não dá para deduzir.
+  TXT
   type        = string
   default     = "https://integracoes.amplimed.com.br/"
 }

@@ -4,6 +4,7 @@ using System.Text.Json;
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Dtos;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace EARS.Integration.Infrastructure.Clients.Amplimed;
 
@@ -22,6 +23,7 @@ namespace EARS.Integration.Infrastructure.Clients.Amplimed;
 /// </remarks>
 public sealed class AmplimedPacientesClient(
     HttpClient http,
+    IOptions<AmplimedOptions> amplimed,
     ILogger<AmplimedPacientesClient> logger) : IAmplimedPacientesClient
 {
     private const string Rota = "pacientes/integration/pattient";
@@ -34,15 +36,31 @@ public sealed class AmplimedPacientesClient(
 
     public async Task<PacienteAmplimed?> BuscarPorCpfAsync(string cpf, CancellationToken ct = default)
     {
+        var procurado = SomenteDigitos(cpf);
         var encontrados = await ListarAsync(new FiltroPacientes(Cpf: cpf, Pagina: 1), ct);
 
-        if (encontrados.Count > 1)
+        // A documentação de "Buscar Paciente" só declara o filtro por janela de
+        // atualização. Se o cpf da querystring for ignorado, a resposta vem com
+        // a lista inteira e pegar o primeiro casaria o paciente errado — o tipo
+        // de erro que termina em consulta marcada no nome de outra pessoa.
+        // Conferir aqui custa nada e fecha essa porta.
+        var doCpf = encontrados.Where(p => p.Cpf == procurado).ToList();
+
+        if (doCpf.Count == 0 && encontrados.Count > 0)
         {
             logger.LogWarning(
-                "Busca por CPF devolveu {Total} cadastros na Amplimed; usando o primeiro.", encontrados.Count);
+                "Buscar Paciente devolveu {Total} cadastros e nenhum com o CPF pedido; " +
+                "o filtro de CPF provavelmente não é aplicado pela Amplimed.", encontrados.Count);
+            return null;
         }
 
-        return encontrados.FirstOrDefault();
+        if (doCpf.Count > 1)
+        {
+            logger.LogWarning(
+                "Busca por CPF devolveu {Total} cadastros na Amplimed; usando o primeiro.", doCpf.Count);
+        }
+
+        return doCpf.FirstOrDefault();
     }
 
     public async Task<PacienteAmplimed?> BuscarPorCodReferenciaAsync(
@@ -51,7 +69,19 @@ public sealed class AmplimedPacientesClient(
         var encontrados = await ListarAsync(
             new FiltroPacientes(CodReferencia: codReferencia, Pagina: 1), ct);
 
-        return encontrados.FirstOrDefault();
+        // Mesma precaução da busca por CPF: só aceitamos o registro que de fato
+        // carrega o codReferencia pedido.
+        var exato = encontrados.FirstOrDefault(p =>
+            string.Equals(p.CodReferencia, codReferencia, StringComparison.OrdinalIgnoreCase));
+
+        if (exato is null && encontrados.Count > 0)
+        {
+            logger.LogWarning(
+                "Buscar Paciente devolveu {Total} cadastros e nenhum com o codReferencia pedido.",
+                encontrados.Count);
+        }
+
+        return exato;
     }
 
     public async Task<IReadOnlyList<PacienteAmplimed>> ListarAsync(
@@ -116,8 +146,7 @@ public sealed class AmplimedPacientesClient(
             return false;
         }
 
-        var resultado = await resposta.Content.ReadFromJsonAsync<SucessoJson>(Json, ct);
-        return resultado?.Success ?? true;
+        return await SucessoAsync(resposta, ct);
     }
 
     /// <summary>
@@ -128,8 +157,31 @@ public sealed class AmplimedPacientesClient(
     public async Task<bool> VincularCodReferenciaAsync(
         string cpf, string codReferencia, CancellationToken ct = default)
     {
+        var usuclin = amplimed.Value.Agendamento.Usuclin;
+
+        if (string.IsNullOrWhiteSpace(usuclin))
+        {
+            logger.LogError(
+                "Vínculo de codReferencia abortado: a rota codreferencia exige o cabeçalho usuclin, " +
+                "e Amplimed:Agendamento:Usuclin está vazio.");
+            return false;
+        }
+
         var corpo = new VincularCodReferenciaJson(SomenteDigitos(cpf), codReferencia);
-        var resposta = await http.PutAsJsonAsync(RotaCodReferencia, corpo, Json, ct);
+
+        // Esta rota foge do padrão das outras duas: a documentação a mostra com
+        // "Authorization" (sem o x-) e exige o cabeçalho "usuclin". O
+        // x-Authorization do HttpClient continua indo junto, porque não custa e
+        // cobre o caso de a documentação estar com erro de digitação.
+        using var requisicao = new HttpRequestMessage(HttpMethod.Put, RotaCodReferencia)
+        {
+            Content = JsonContent.Create(corpo, options: Json),
+        };
+        requisicao.Headers.TryAddWithoutValidation(
+            "Authorization", $"Basic {amplimed.Value.Pacientes.Token}");
+        requisicao.Headers.TryAddWithoutValidation("usuclin", usuclin);
+
+        var resposta = await http.SendAsync(requisicao, ct);
 
         if (!resposta.IsSuccessStatusCode)
         {
@@ -140,11 +192,30 @@ public sealed class AmplimedPacientesClient(
             return false;
         }
 
-        var resultado = await resposta.Content.ReadFromJsonAsync<SucessoJson>(Json, ct);
-        return resultado?.Success ?? true;
+        return await SucessoAsync(resposta, ct);
     }
 
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// 2xx com corpo vazio é sucesso. Desserializar direto quebraria aqui, e um
+    /// cadastro que deu certo seria contado como falha.
+    /// </summary>
+    private async Task<bool> SucessoAsync(HttpResponseMessage resposta, CancellationToken ct)
+    {
+        var corpo = (await resposta.Content.ReadAsStringAsync(ct)).Trim();
+        if (corpo.Length == 0) return true;
+
+        try
+        {
+            return JsonSerializer.Deserialize<SucessoJson>(corpo, Json)?.Success ?? true;
+        }
+        catch (JsonException)
+        {
+            logger.LogWarning("Resposta da API de Pacientes não era JSON reconhecível: {Corpo}", corpo);
+            return true;
+        }
+    }
 
     /// <summary>Aceita tanto o array puro quanto o envelope <c>{ data: [...] }</c>.</summary>
     private IReadOnlyList<PacienteAmplimed> Normalizar(string corpo)
