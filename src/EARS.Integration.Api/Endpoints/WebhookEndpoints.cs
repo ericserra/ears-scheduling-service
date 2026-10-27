@@ -116,12 +116,25 @@ public static class WebhookEndpoints
 
     /// <summary>
     /// Segredo compartilhado, comparado em tempo constante para não vazar o
-    /// prefixo correto pelo tempo de resposta. Segredo vazio desliga a
-    /// verificação, o que só faz sentido em desenvolvimento.
+    /// prefixo correto pelo tempo de resposta.
     /// </summary>
+    /// <remarks>
+    /// Segredo vazio REJEITA. Antes ele liberava, e o efeito em produção era
+    /// uma porta pública sem autenticação nenhuma: qualquer um que achasse o
+    /// domínio podia postar em /webhooks/sleekflow/atendimento, que recebe o
+    /// telefone no corpo, e fazer o motor abrir conversa e mandar WhatsApp
+    /// para um número qualquer. Falha de configuração agora derruba o webhook,
+    /// que é barulhento e visível, em vez de abri-lo, que é silencioso.
+    /// </remarks>
     private static bool AssinaturaValida(HttpRequest request, SleekFlowOptions opcoes, ILogger logger)
     {
-        if (string.IsNullOrEmpty(opcoes.WebhookSecret)) return true;
+        if (string.IsNullOrEmpty(opcoes.WebhookSecret))
+        {
+            logger.LogError(
+                "Webhook rejeitado: SleekFlow__WebhookSecret não está configurado. " +
+                "Enquanto estiver vazio, nenhuma mensagem do SleekFlow é aceita.");
+            return false;
+        }
 
         var recebido = request.Headers["X-SleekFlow-Signature"].ToString();
 

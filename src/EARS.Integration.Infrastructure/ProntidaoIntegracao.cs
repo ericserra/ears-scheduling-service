@@ -31,6 +31,11 @@ public sealed class ProntidaoIntegracao : IProntidaoIntegracao
         if (string.IsNullOrWhiteSpace(s.RemetenteTelefone))
             pendencias.Add("SleekFlow__RemetenteTelefone");
 
+        // Sem ele o webhook rejeita tudo, então o SleekFlow não consegue
+        // entregar mensagem nenhuma: é impedimento, não degradação.
+        if (string.IsNullOrWhiteSpace(s.WebhookSecret))
+            pendencias.Add("SleekFlow__WebhookSecret");
+
         AmplimedConfigurada = !pendencias.Any(p => p.StartsWith("Amplimed", StringComparison.Ordinal));
         SleekFlowConfigurado = !pendencias.Any(p => p.StartsWith("SleekFlow", StringComparison.Ordinal));
 

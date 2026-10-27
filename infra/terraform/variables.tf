@@ -379,12 +379,19 @@ variable "sleekflow_webhook_secret" {
   description = <<-TXT
     Segredo compartilhado que o serviço confere no webhook.
 
-    Segue obrigatório mesmo numa subida sem as demais credenciais: ele é o que
-    impede qualquer um de postar nos endpoints públicos. Vazio desliga a
-    verificação.
+    Obrigatório mesmo numa subida sem as demais credenciais: ele é o que impede
+    qualquer um de postar nos endpoints públicos. Com ele vazio o serviço
+    rejeita todo webhook, então o SleekFlow não entrega mensagem nenhuma.
+
+    Gere com: openssl rand -hex 32
   TXT
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.sleekflow_webhook_secret) >= 16
+    error_message = "Use pelo menos 16 caracteres. Vazio ou curto deixa os webhooks públicos sem proteção real."
+  }
 }
 
 # ---------------------------------------------------------------------------
