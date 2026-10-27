@@ -7,6 +7,7 @@ crash.*.log
 
 # Valores reais
 terraform.tfvars
+terraform.tfvars.*
 *.auto.tfvars
 *.tfvars.json
 !terraform.tfvars.example
