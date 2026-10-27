@@ -17,6 +17,9 @@ namespace EARS.Integration.Api.Endpoints;
 /// </summary>
 public static class AdminEndpoints
 {
+    /// <summary>Quando este processo subiu. Delata container que não reiniciou.</summary>
+    private static readonly DateTimeOffset Iniciado = DateTimeOffset.UtcNow;
+
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
         var grupo = app.MapGroup("/admin")
@@ -231,8 +234,16 @@ public static class AdminEndpoints
         }))
         .WithSummary("O que falta configurar para o motor atender de ponta a ponta.");
 
-        grupo.MapGet("/config", (IOptions<AutomacaoOptions> options) =>
-            Results.Ok(options.Value))
-        .WithSummary("Exibe os parâmetros de automação em vigor.");
+        // A versão vem do mesmo valor que dispara o rebuild da imagem. Sem ela
+        // não dá para distinguir, de fora, "o código novo não resolveu" de "a
+        // imagem não foi reconstruída", e os dois já custaram tempo aqui.
+        grupo.MapGet("/config", (IOptions<AutomacaoOptions> options, IConfiguration config) =>
+            Results.Ok(new
+            {
+                versao = config["App:Versao"] ?? "(não informada)",
+                iniciadoEm = Iniciado,
+                automacao = options.Value,
+            }))
+        .WithSummary("Parâmetros de automação em vigor e versão da imagem.");
     }
 }

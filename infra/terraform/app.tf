@@ -34,6 +34,7 @@ locals {
   # para ajustar cron e templates sem editar o Terraform.
   env_base = {
     "ASPNETCORE_ENVIRONMENT" = var.ambiente
+    "App__Versao"            = var.app_versao
     "ASPNETCORE_URLS"        = "http://+:${var.app_porta}"
     "TZ"                     = var.fuso_horario
 
