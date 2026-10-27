@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Amplimed - EARS (Strenos)",
-    "description": "Coleção de testes da integração EARS.\n\nSão DUAS APIs com credenciais diferentes, e isso define a estrutura desta coleção.\n\n1. API de Dados (hr.amplimed.com.br). Somente leitura. Login em /oauth/login devolve um Bearer. Abra \"00 Autenticação > Gerar Token\" e clique em Send: o script grava o access_token numa variável da coleção e a pasta \"API de Dados\" herda Bearer {{access_token}}. Temos essas credenciais.\n\n2. Gateway de Integrações (integracoes.amplimed.com.br). É quem permite escrever. Autentica por x-authorization (agendamento) e x-Authorization: Basic (pacientes), com o identifier no caminho da URL. O Bearer da API de Dados NÃO funciona aqui: devolve 401 \"Wrong credentials!\". Confirmado em teste pelo cliente em 23/10/2026. Essas credenciais ainda não existem do nosso lado.\n\nPor isso as pastas do gateway ficam como No Auth, com o cabeçalho próprio. Enquanto identifier e tokens não chegarem, elas vão responder 401, e isso é o esperado.\n\nAmbientes da API de Dados: produção hr.amplimed.com.br, homologação stghr.amplimed.cloud, dev devhr.amplimed.cloud. Do gateway: integracoes.amplimed.com.br e stgintegracoes.amplimed.cloud. São hosts diferentes, não confundir.\n\nO login responde 201, não 200. O token é um JWT de 3 horas e o expires_at vem em UTC.\n\nEsta cópia versionada vai SEM credenciais. Preencha clientId e clientSecret em Variables e não commite os valores de volta.",
+    "description": "Coleção de testes da integração EARS.\n\nSão DUAS APIs com credenciais diferentes, e isso define a estrutura desta coleção.\n\n1. API de Dados (hr.amplimed.com.br). Somente leitura. Login em /oauth/login devolve um Bearer. Abra \"00 Autenticação > Gerar Token\" e clique em Send: o script grava o access_token numa variável da coleção e a pasta \"API de Dados\" herda Bearer {{access_token}}. Temos essas credenciais.\n\n2. Gateway de Integrações (integracoes.amplimed.com.br). É quem permite escrever. Autentica por x-authorization (agendamento) e x-Authorization: Basic (pacientes), com o identifier no caminho da URL. O Bearer da API de Dados NÃO funciona aqui: devolve 401 \"Wrong credentials!\". Confirmado em teste pelo cliente em 23/10/2026. Essas credenciais ainda não existem do nosso lado.\n\nPor isso as pastas do gateway ficam como No Auth, com o cabeçalho próprio.\n\nCOLE O TOKEN DO GATEWAY ANTES DE USAR AS DUAS ÚLTIMAS PASTAS. Ele vem no e-mail \"Credenciais de Integração\" da Amplimed, no formato \"Basic <base64>\". Em Variables:\n- basic_token_client: só a parte depois de \"Basic \"\n- token_agendamento: o valor inteiro, incluindo \"Basic \"\n\nCopie do e-mail, nunca de uma captura de tela. O token é um base64 de uuid:uuid e um caractere a menos derruba a autenticação sem explicar o motivo. As duas pastas do gateway têm um script que confere isso antes de disparar a requisição e avisa no Console.\n\nAmbientes da API de Dados: produção hr.amplimed.com.br, homologação stghr.amplimed.cloud, dev devhr.amplimed.cloud. Do gateway: integracoes.amplimed.com.br e stgintegracoes.amplimed.cloud. São hosts diferentes, não confundir.\n\nO login responde 201, não 200. O token é um JWT de 3 horas e o expires_at vem em UTC.\n\nEsta cópia versionada vai SEM credenciais. Preencha em Variables e não commite os valores de volta.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -50,7 +50,7 @@
     },
     {
       "key": "identifier",
-      "value": "",
+      "value": "integracao-ears",
       "type": "string"
     },
     {
@@ -440,6 +440,40 @@
             "description": "Serve de comparação com a busca por CPF. Se as duas devolverem o mesmo número de registros, o filtro de CPF não está sendo aplicado."
           }
         }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// O token do gateway é base64 de uuid:uuid. Transcrever de uma captura de",
+              "// tela costuma perder um caractere no fim, e o 401 resultante não diz nada.",
+              "// Conferir aqui transforma isso num aviso legível.",
+              "const bruto = pm.request.url.toString().includes('/pacientes/')",
+              "    ? pm.collectionVariables.get('basic_token_client')",
+              "    : pm.collectionVariables.get('token_agendamento');",
+              "",
+              "const b64 = String(bruto || '').replace(/^Basic\\s+/i, '').trim();",
+              "",
+              "if (!b64) {",
+              "    console.warn('Token do gateway vazio. Preencha em Variables antes de rodar esta pasta.');",
+              "} else if (b64.length % 4 !== 0) {",
+              "    console.warn('Token do gateway truncado: base64 precisa de comprimento múltiplo de 4, e este tem ' + b64.length + '. Copie de novo do e-mail, sem usar captura de tela.');",
+              "} else {",
+              "    try {",
+              "        const decodificado = atob(b64);",
+              "        const partes = decodificado.split(':');",
+              "        if (partes.length !== 2 || partes.some(x => x.length !== 36)) {",
+              "            console.warn('Token do gateway decodifica para \"' + decodificado + '\", que não é um par uuid:uuid completo. Provavelmente faltam caracteres.');",
+              "        }",
+              "    } catch (e) {",
+              "        console.warn('Token do gateway não é base64 válido.');",
+              "    }",
+              "}"
+            ]
+          }
+        }
       ]
     },
     {
@@ -535,6 +569,40 @@
               ]
             },
             "description": "O usuclin vai no caminho, entre o identificador e o nome da rota."
+          }
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// O token do gateway é base64 de uuid:uuid. Transcrever de uma captura de",
+              "// tela costuma perder um caractere no fim, e o 401 resultante não diz nada.",
+              "// Conferir aqui transforma isso num aviso legível.",
+              "const bruto = pm.request.url.toString().includes('/pacientes/')",
+              "    ? pm.collectionVariables.get('basic_token_client')",
+              "    : pm.collectionVariables.get('token_agendamento');",
+              "",
+              "const b64 = String(bruto || '').replace(/^Basic\\s+/i, '').trim();",
+              "",
+              "if (!b64) {",
+              "    console.warn('Token do gateway vazio. Preencha em Variables antes de rodar esta pasta.');",
+              "} else if (b64.length % 4 !== 0) {",
+              "    console.warn('Token do gateway truncado: base64 precisa de comprimento múltiplo de 4, e este tem ' + b64.length + '. Copie de novo do e-mail, sem usar captura de tela.');",
+              "} else {",
+              "    try {",
+              "        const decodificado = atob(b64);",
+              "        const partes = decodificado.split(':');",
+              "        if (partes.length !== 2 || partes.some(x => x.length !== 36)) {",
+              "            console.warn('Token do gateway decodifica para \"' + decodificado + '\", que não é um par uuid:uuid completo. Provavelmente faltam caracteres.');",
+              "        }",
+              "    } catch (e) {",
+              "        console.warn('Token do gateway não é base64 válido.');",
+              "    }",
+              "}"
+            ]
           }
         }
       ]

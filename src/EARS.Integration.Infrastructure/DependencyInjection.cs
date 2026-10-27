@@ -63,7 +63,7 @@ public static class DependencyInjection
         services.AddHttpClient<IAmplimedPacientesClient, AmplimedPacientesClient>(c =>
             {
                 c.BaseAddress = new Uri(amplimed.Pacientes.BaseUrl);
-                c.DefaultRequestHeaders.Add("x-Authorization", $"Basic {amplimed.Pacientes.Token}");
+                c.DefaultRequestHeaders.Add("x-Authorization", amplimed.Pacientes.Cabecalho);
             })
             .AddPolicyHandler((sp, _) => PoliticasHttp.Retry(Logger(sp), "AmplimedPacientes"))
             .AddPolicyHandler((sp, _) => PoliticasHttp.CircuitBreaker(Logger(sp), "AmplimedPacientes"))

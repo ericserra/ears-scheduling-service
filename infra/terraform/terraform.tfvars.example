@@ -46,14 +46,21 @@ admin_ips = [
   # "203.0.113.4/32",
 ]
 
+# Gateway de Integrações. É outro host, e outras credenciais, que a API de
+# Dados em hr.amplimed.com.br: o Bearer de lá devolve 401 aqui.
 # Homologação: https://stgintegracoes.amplimed.cloud/
 amplimed_base_url                  = "https://integracoes.amplimed.com.br/"
-amplimed_pacientes_token           = ""
-amplimed_agendamento_identificador = ""
-amplimed_agendamento_token         = ""
 
-# Número da clínica. Vazio derruba para o cenário B da Cláusula 3ª.
-amplimed_usuclin = ""
+# Do e-mail "Credenciais de Integração" da Amplimed.
+# O token é um Basic de uuid:uuid. Copie do e-mail, não de uma captura de tela:
+# dois caracteres a menos e a autenticação falha sem dizer o porquê.
+amplimed_agendamento_identificador = "integracao-ears"
+amplimed_agendamento_token         = ""
+amplimed_pacientes_token           = ""
+
+# Número da clínica, confirmado por list-clinics em 23/10.
+# Vazio derruba para o cenário B da Cláusula 3ª.
+amplimed_usuclin = "57622"
 
 # Raiz da API. Só mexa se a SleekFlow indicar outro ambiente que fale o mesmo
 # dialeto desta integração. api.onsleek.ai é outro produto e não funciona aqui.

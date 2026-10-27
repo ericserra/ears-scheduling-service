@@ -249,13 +249,21 @@ variable "amplimed_pacientes_token" {
   # Opcional de propósito: o ambiente sobe antes das credenciais chegarem.
   # Vazio faz o motor recusar atendimento (503) em vez de atender pela metade.
   default     = ""
-  description = "Token da API de Cadastro de Pacientes (vai como Basic no x-Authorization)."
+  description = <<-TXT
+    Token da API de Cadastro de Pacientes, do e-mail "Credenciais de
+    Integração" da Amplimed. Cole o valor como veio, com ou sem o prefixo
+    "Basic ": o motor normaliza e manda um prefixo só.
+  TXT
   type        = string
   sensitive   = true
 }
 
 variable "amplimed_agendamento_identificador" {
-  description = "Identificador da API de Agendamento. Vai no caminho da rota."
+  description = <<-TXT
+    Identificador da API de Agendamento, do e-mail da Amplimed. Vai no CAMINHO
+    da rota, depois de /integracoes/referencia/, nunca em cabeçalho. Para a
+    EARS é "integracao-ears".
+  TXT
   type        = string
   sensitive   = true
   default     = ""
@@ -265,7 +273,13 @@ variable "amplimed_agendamento_token" {
   # Opcional de propósito: o ambiente sobe antes das credenciais chegarem.
   # Vazio faz o motor recusar atendimento (503) em vez de atender pela metade.
   default     = ""
-  description = "Token da API de Agendamento (cabeçalho x-authorization)."
+  description = <<-TXT
+    Token da API de Agendamento, do mesmo e-mail. Vai no cabeçalho
+    x-authorization EXATAMENTE como configurado aqui, sem normalização, porque
+    a documentação não diz se essa rota espera o prefixo. Comece colando o
+    valor inteiro ("Basic abc123"); se der 401, tente só a parte depois do
+    "Basic ".
+  TXT
   type        = string
   sensitive   = true
 }

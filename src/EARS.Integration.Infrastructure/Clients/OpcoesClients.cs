@@ -28,8 +28,40 @@ public sealed class PacientesApiOptions
     /// <summary>Raiz do gateway. O client acrescenta <c>pacientes/integration/</c>.</summary>
     public string BaseUrl { get; set; } = "https://integracoes.amplimed.com.br/";
 
-    /// <summary>Enviado no cabeçalho <c>x-Authorization</c> como "Basic {Token}".</summary>
+    /// <summary>
+    /// Vai no cabeçalho <c>x-Authorization</c>. A Amplimed entrega o valor já
+    /// com o prefixo ("Basic abc123"), e a documentação o descreve sem ele, o
+    /// que faz a mesma string ser colada dos dois jeitos. <see cref="Cabecalho"/>
+    /// aceita as duas formas em vez de produzir "Basic Basic abc123".
+    /// </summary>
     public string Token { get; set; } = string.Empty;
+
+    /// <summary>Valor pronto para o cabeçalho, com exatamente um "Basic ".</summary>
+    public string Cabecalho => Credenciais.ComoBasic(Token);
+}
+
+/// <summary>
+/// Tolerância de formato para as credenciais que chegam por e-mail da Amplimed.
+/// </summary>
+public static class Credenciais
+{
+    private const string Prefixo = "Basic ";
+
+    /// <summary>
+    /// Devolve o token com um único prefixo <c>Basic</c>, tenha ele vindo com
+    /// ou sem. Vazio continua vazio: quem decide o que fazer com credencial
+    /// ausente é a prontidão, não este método.
+    /// </summary>
+    public static string ComoBasic(string? token)
+    {
+        var limpo = (token ?? string.Empty).Trim();
+
+        if (limpo.Length == 0) return string.Empty;
+
+        return limpo.StartsWith(Prefixo, StringComparison.OrdinalIgnoreCase)
+            ? Prefixo + limpo[Prefixo.Length..].Trim()
+            : Prefixo + limpo;
+    }
 }
 
 public sealed class AgendamentoApiOptions
@@ -43,7 +75,11 @@ public sealed class AgendamentoApiOptions
     /// </summary>
     public string Identificador { get; set; } = string.Empty;
 
-    /// <summary>Enviado no cabeçalho <c>x-authorization</c>.</summary>
+    /// <summary>
+    /// Vai no cabeçalho <c>x-authorization</c>, exatamente como a Amplimed
+    /// mandou. O e-mail de credenciais entrega esta API com o prefixo
+    /// ("Basic abc123"), e é assim que o valor deve ser configurado.
+    /// </summary>
     public string Token { get; set; } = string.Empty;
 
     /// <summary>

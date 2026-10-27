@@ -178,7 +178,7 @@ public sealed class AmplimedPacientesClient(
             Content = JsonContent.Create(corpo, options: Json),
         };
         requisicao.Headers.TryAddWithoutValidation(
-            "Authorization", $"Basic {amplimed.Value.Pacientes.Token}");
+            "Authorization", amplimed.Value.Pacientes.Cabecalho);
         requisicao.Headers.TryAddWithoutValidation("usuclin", usuclin);
 
         var resposta = await http.SendAsync(requisicao, ct);
