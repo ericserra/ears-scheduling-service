@@ -9,3 +9,15 @@ docs
 .env.*
 !.env.example
 README.md
+
+# O build faz COPY . ., e o state do Terraform guarda TODO valor de variável em
+# texto puro: senha do Postgres, chave admin, segredo do webhook, credenciais da
+# Amplimed. Sem esta linha isso entra na camada do estágio de build, que fica no
+# cache do Docker na VPS, porque o terraform apply roda com o diretório de
+# trabalho dentro do próprio clone.
+infra
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+!**/*.tfvars.example
+**/*.tfplan
