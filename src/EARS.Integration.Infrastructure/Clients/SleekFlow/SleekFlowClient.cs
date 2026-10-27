@@ -23,7 +23,7 @@ namespace EARS.Integration.Infrastructure.Clients.SleekFlow;
 /// vai em formato internacional sem o "+", que é exatamente como o value
 /// object Telefone guarda.
 /// </remarks>
-public sealed class SleekFlowClient(
+public sealed partial class SleekFlowClient(
     HttpClient http,
     IOptions<SleekFlowOptions> options,
     ILogger<SleekFlowClient> logger) : ISleekFlowClient
@@ -159,7 +159,7 @@ public sealed class SleekFlowClient(
 
             if (!resposta.IsSuccessStatusCode)
             {
-                var erro = await resposta.Content.ReadAsStringAsync(ct);
+                var erro = Redigir(await resposta.Content.ReadAsStringAsync(ct));
                 logger.LogError(
                     "SleekFlow recusou o envio de {Descricao}: {Codigo} {Erro}",
                     descricao, (int)resposta.StatusCode, erro);
@@ -296,7 +296,7 @@ public sealed class SleekFlowClient(
 
             if (!resposta.IsSuccessStatusCode)
             {
-                var erro = await resposta.Content.ReadAsStringAsync(ct);
+                var erro = Redigir(await resposta.Content.ReadAsStringAsync(ct));
                 logger.LogError(
                     "Ajuste de etiquetas de {Telefone} falhou: {Codigo} {Erro}. " +
                     "Adicionar: [{Adicionar}] Remover: [{Remover}]",
@@ -340,4 +340,22 @@ public sealed class SleekFlowClient(
             remover: [_opcoes.EtiquetaAgendamentoEmCurso],
             ct);
     }
+
+    /// <summary>
+    /// A SleekFlow devolve a chave usada dentro do corpo de erro de 401
+    /// ("Authentication failed. APIKey=[...]"). Registrar isso em log põe a
+    /// credencial num arquivo que vai para suporte, backup e terminal de quem
+    /// estiver depurando. Trocamos o valor por um marcador.
+    /// </summary>
+    internal static string Redigir(string? corpo)
+    {
+        if (string.IsNullOrEmpty(corpo)) return string.Empty;
+
+        return RegexChave().Replace(corpo, "APIKey=[REDIGIDA]");
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"APIKey\s*=\s*\[[^\]]*\]",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex RegexChave();
 }

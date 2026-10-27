@@ -14,6 +14,9 @@ public interface IRelogio
     /// Necessário porque "os agendamentos do dia 11" é um intervalo no fuso da
     /// clínica, não em UTC. Tratar a borda como meia-noite UTC deixaria de fora
     /// as consultas depois das 21h e incluiria as da noite anterior.
+    ///
+    /// O valor vem em UTC: é o mesmo instante, na representação que o Postgres
+    /// aceita como parâmetro de timestamptz.
     /// </remarks>
     DateTimeOffset InicioDoDiaLocal(DateOnly dia);
 }
