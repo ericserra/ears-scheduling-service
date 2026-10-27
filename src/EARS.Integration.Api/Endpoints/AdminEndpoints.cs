@@ -91,13 +91,39 @@ public static class AdminEndpoints
         .WithSummary("Dispara manualmente a varredura de confirmação D-1.");
 
         grupo.MapPost("/agenda/sincronizar", async (
-            DateOnly? dia, SincronizarAgendaUseCase useCase, CancellationToken ct) =>
+            DateOnly? dia, SincronizarAgendaUseCase useCase,
+            IOptions<AmplimedOptions> opcoes, CancellationToken ct) =>
         {
-            var resultado = dia is { } alvo
-                ? await useCase.ExecutarParaDiaAsync(alvo, ct)
-                : await useCase.ExecutarAsync(ct);
+            try
+            {
+                var resultado = dia is { } alvo
+                    ? await useCase.ExecutarParaDiaAsync(alvo, ct)
+                    : await useCase.ExecutarAsync(ct);
 
-            return Results.Ok(resultado);
+                return Results.Ok(resultado);
+            }
+            catch (AmplimedException ex)
+            {
+                // Credencial recusada não é falha do serviço. Devolver 500 com
+                // stack trace obriga a abrir log para descobrir que o problema
+                // é configuração; o 502 com o status original diz isso de fora.
+                return Results.Json(
+                    new
+                    {
+                        status = (int)ex.Status,
+                        erro = ex.Message,
+                        host = opcoes.Value.Agendamento.BaseUrl,
+                        identificador = opcoes.Value.Agendamento.Identificador,
+                        usuclin = opcoes.Value.Agendamento.Usuclin,
+                        dica = (int)ex.Status == 401
+                            ? "A Amplimed recusou a credencial. Confira o formato de " +
+                              "Amplimed__Agendamento__Token: o e-mail entrega \"Basic abc123\", " +
+                              "e essa rota pode esperar só o abc123. Confira também se o " +
+                              "identificador e o usuclin estão corretos."
+                            : null,
+                    },
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
         })
         .WithSummary("Força o polling da agenda da Amplimed, de um dia ou da janela configurada.");
 
