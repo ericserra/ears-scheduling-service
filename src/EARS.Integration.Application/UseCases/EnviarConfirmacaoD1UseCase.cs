@@ -23,6 +23,12 @@ public sealed class EnviarConfirmacaoD1UseCase(
     IOptions<AutomacaoOptions> options,
     ILogger<EnviarConfirmacaoD1UseCase> logger)
 {
+    /// <summary>
+    /// Impede o duplo clique: quem recebeu há menos que isso não recebe de novo
+    /// no disparo pela agenda, a menos que o operador peça <c>reenviar</c>.
+    /// </summary>
+    private static readonly TimeSpan JanelaAntiDuplicidade = TimeSpan.FromHours(6);
+
     private readonly AutomacaoOptions _opcoes = options.Value;
 
     /// <summary>Disparo agendado: a agenda de amanhã, todos os elegíveis.</summary>
@@ -37,7 +43,7 @@ public sealed class EnviarConfirmacaoD1UseCase(
     public async Task<ResultadoDisparo> ExecutarParaDiaAsync(
         DateOnly dia, OpcoesDisparo opcoes, CancellationToken ct = default)
     {
-        var alvos = await ObterAgendamentosAsync(dia, ct);
+        var (alvos, agendadosNaAgenda) = await ObterAgendamentosAsync(dia, opcoes.ValidarNaAgenda, ct);
         var itens = new List<ItemDisparo>();
         var enviados = 0;
 
@@ -57,15 +63,30 @@ public sealed class EnviarConfirmacaoD1UseCase(
                 agendamento.InicioEm,
                 situacao));
 
-            var elegivel = opcoes.Reenviar
-                ? agendamento.Status == StatusAgendamento.Agendado
-                : agendamento.ElegivelParaConfirmacao();
+            string? motivoDeExclusao;
+            var jaRecebeuEm = agendamento.ConfirmacaoEnviadaEm;
 
-            if (!elegivel)
+            if (opcoes.ValidarNaAgenda)
             {
-                Registrar(agendamento.ConfirmacaoEnviadaEm is { } enviadaEm
-                    ? $"ignorado: confirmação já enviada em {enviadaEm:dd/MM HH:mm} UTC (use reenviar=true)"
-                    : $"ignorado: status {agendamento.Status}");
+                // A agenda da clínica é quem diz se a consulta ainda não foi confirmada.
+                // Ter recebido a mensagem antes não impede um novo envio — só o guarda abaixo.
+                motivoDeExclusao = MotivoDeExclusaoPelaAgenda(agendamento, agendadosNaAgenda!, opcoes.Reenviar);
+            }
+            else
+            {
+                var elegivel = opcoes.Reenviar
+                    ? agendamento.Status == StatusAgendamento.Agendado
+                    : agendamento.ElegivelParaConfirmacao();
+
+                motivoDeExclusao = elegivel ? null
+                    : jaRecebeuEm is { } enviadaEm
+                        ? $"ignorado: confirmação já enviada em {enviadaEm:dd/MM HH:mm} UTC (use reenviar=true)"
+                        : $"ignorado: status {agendamento.Status}";
+            }
+
+            if (motivoDeExclusao is not null)
+            {
+                Registrar(motivoDeExclusao);
                 continue;
             }
 
@@ -85,7 +106,9 @@ public sealed class EnviarConfirmacaoD1UseCase(
 
             if (opcoes.Simular)
             {
-                Registrar("simulado: seria enviado, nada saiu");
+                Registrar(jaRecebeuEm is { } antes
+                    ? $"simulado: seria enviado, nada saiu (já recebeu em {antes:dd/MM HH:mm} UTC)"
+                    : "simulado: seria enviado, nada saiu");
                 continue;
             }
 
@@ -112,7 +135,9 @@ public sealed class EnviarConfirmacaoD1UseCase(
             {
                 agendamento.MarcarConfirmacaoEnviada();
                 enviados++;
-                Registrar("enviado");
+                Registrar(jaRecebeuEm is { } anterior
+                    ? $"enviado (já havia recebido em {anterior:dd/MM HH:mm} UTC)"
+                    : "enviado");
 
                 await MarcarEtiquetaAsync(agendamento, telefone, ct);
             }
@@ -137,30 +162,69 @@ public sealed class EnviarConfirmacaoD1UseCase(
     /// de modo que o disparo cobre consultas marcadas por qualquer canal.
     /// Cenário B: lê o espelho como está, cobrindo só o que veio pelo WhatsApp.
     ///
-    /// Em ambos os casos a leitura é do espelho local: ele é o modelo de leitura
-    /// único, e a conciliação é o que o mantém fiel. Falha na conciliação degrada
-    /// para o espelho em vez de abortar o disparo — melhor confirmar o que se sabe
-    /// do que não confirmar nada.
+    /// No disparo agendado, falha na conciliação degrada para o espelho: melhor
+    /// confirmar o que se sabe do que não confirmar nada. No disparo manual com
+    /// <see cref="OpcoesDisparo.ValidarNaAgenda"/> não há degradação: a decisão é
+    /// o status da agenda, então sem leitura fresca nada sai.
     /// </summary>
-    private async Task<IReadOnlyList<Agendamento>> ObterAgendamentosAsync(DateOnly dia, CancellationToken ct)
+    private async Task<(IReadOnlyList<Agendamento> Alvos, IReadOnlySet<string>? Agendados)> ObterAgendamentosAsync(
+        DateOnly dia, bool exigirAgenda, CancellationToken ct)
     {
+        IReadOnlySet<string>? agendados = null;
+
+        if (exigirAgenda && !_opcoes.LeituraAgendaViaApi)
+            throw new AgendaIndisponivelException(
+                "Automacao__LeituraAgendaViaApi está desligada: sem ler a agenda da Amplimed " +
+                "não há como validar o status das consultas.");
+
         if (_opcoes.LeituraAgendaViaApi)
         {
             try
             {
                 var resultado = await sincronizarAgenda.ExecutarParaDiaAsync(dia, ct);
+                agendados = resultado.AgendadosNaAgenda;
                 logger.LogInformation(
-                    "Cenário A: agenda de {Dia} conciliada ({Lidos} lidos, {Criados} novos).",
-                    dia, resultado.Lidos, resultado.Criados);
+                    "Cenário A: agenda de {Dia} conciliada ({Lidos} lidos, {Criados} novos, " +
+                    "{Desconhecidos} com status desconhecido).",
+                    dia, resultado.Lidos, resultado.Criados, resultado.IgnoradosStatusDesconhecido);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!exigirAgenda)
             {
                 logger.LogError(ex,
                     "Conciliação da agenda de {Dia} falhou; seguindo com o espelho local.", dia);
             }
         }
 
-        return await agendamentos.ListarPorDiaAsync(dia, ct);
+        return (await agendamentos.ListarPorDiaAsync(dia, ct), agendados);
+    }
+
+    /// <summary>
+    /// Regra do disparo geral: manda quem a agenda ainda mostra como "Agendado".
+    /// Devolve o motivo da exclusão, ou <c>null</c> se o agendamento deve receber.
+    /// </summary>
+    private string? MotivoDeExclusaoPelaAgenda(
+        Agendamento agendamento, IReadOnlySet<string> agendadosNaAgenda, bool reenviar)
+    {
+        // Já respondeu pelo WhatsApp (confirmou, cancelou, remarcou): a resposta vale
+        // mais que a agenda, que pode ainda não ter recebido a atualização.
+        if (agendamento.RespondidoEm is not null)
+            return $"ignorado: paciente já respondeu ({agendamento.Status})";
+
+        // NaoConfirmado é só nosso: na agenda a consulta segue "Agendado", e é
+        // justamente quem precisa receber de novo.
+        if (agendamento.Status is not (StatusAgendamento.Agendado or StatusAgendamento.NaoConfirmado))
+            return $"ignorado: status {agendamento.Status}";
+
+        if (!agendadosNaAgenda.Contains(
+                ResultadoSincronizacao.Chave(agendamento.Usuclin, agendamento.IdAgendamentoAmplimed)))
+            return "ignorado: a agenda não mostra esta consulta como Agendado (já confirmada, cancelada, bloqueada ou fora da agenda)";
+
+        if (!reenviar
+            && agendamento.ConfirmacaoEnviadaEm is { } enviadaEm
+            && relogio.AgoraUtc - enviadaEm < JanelaAntiDuplicidade)
+            return $"ignorado: confirmação enviada há pouco, em {enviadaEm:dd/MM HH:mm} UTC (use reenviar=true)";
+
+        return null;
     }
 
     /// <summary>
@@ -190,10 +254,19 @@ public sealed class EnviarConfirmacaoD1UseCase(
 /// <param name="Telefones">Só estes números (já normalizados). <c>null</c> = todos os elegíveis do dia.</param>
 /// <param name="Simular">Percorre e relata, mas não envia nada nem grava.</param>
 /// <param name="Reenviar">Inclui quem já recebeu a confirmação, para repetir um teste.</param>
+/// <param name="ValidarNaAgenda">
+/// Decide pelo status da agenda da Amplimed, lido na hora: recebe quem ainda está
+/// "Agendado" lá, tenha ou não recebido antes. Exige a leitura da agenda; se ela
+/// falhar, o disparo aborta em vez de usar dados velhos.
+/// </param>
 public sealed record OpcoesDisparo(
     IReadOnlySet<string>? Telefones = null,
     bool Simular = false,
-    bool Reenviar = false);
+    bool Reenviar = false,
+    bool ValidarNaAgenda = false);
+
+/// <summary>A agenda da clínica não pôde ser lida, e a operação depende dela.</summary>
+public sealed class AgendaIndisponivelException(string mensagem) : Exception(mensagem);
 
 public sealed record ItemDisparo(
     Guid AgendamentoId,

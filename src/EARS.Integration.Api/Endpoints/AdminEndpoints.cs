@@ -113,12 +113,31 @@ public static class AdminEndpoints
                 });
             }
 
-            var resultado = await useCase.ExecutarParaDiaAsync(
-                dia ?? relogio.HojeLocal.AddDays(1),
-                new OpcoesDisparo(filtro, simular ?? false, reenviar ?? false),
-                ct);
+            try
+            {
+                var resultado = await useCase.ExecutarParaDiaAsync(
+                    dia ?? relogio.HojeLocal.AddDays(1),
+                    new OpcoesDisparo(filtro, simular ?? false, reenviar ?? false, ValidarNaAgenda: true),
+                    ct);
 
-            return Results.Ok(resultado);
+                return Results.Ok(resultado);
+            }
+            catch (AgendaIndisponivelException ex)
+            {
+                return Results.Json(new { erro = ex.Message }, statusCode: StatusCodes.Status409Conflict);
+            }
+            catch (AmplimedException ex)
+            {
+                // Sem ler a agenda não se sabe quem ainda está por confirmar: nada foi enviado.
+                return Results.Json(
+                    new
+                    {
+                        erro = "Não foi possível ler a agenda da Amplimed; nada foi enviado.",
+                        status = (int)ex.Status,
+                        detalhe = ex.Message,
+                    },
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
         })
         .WithSummary("Dispara a confirmação D-1 de um dia, com filtro de telefone, simulação e reenvio.");
 

@@ -14,9 +14,16 @@ public sealed record ResultadoSincronizacao(
     int Conciliados,
     int VinculadosAgenda,
     int IgnoradosSemCpf,
-    int IgnoradosSemTelefone)
+    int IgnoradosSemTelefone,
+    int IgnoradosStatusDesconhecido = 0,
+    IReadOnlySet<string>? AgendadosNaAgenda = null)
 {
     public static ResultadoSincronizacao Vazio => new(0, 0, 0, 0, 0, 0);
+
+    /// <summary>
+    /// Chave que identifica um agendamento da Amplimed em <see cref="AgendadosNaAgenda"/>.
+    /// </summary>
+    public static string Chave(string? usuclin, long? idAgendamento) => $"{usuclin}:{idAgendamento}";
 
     public ResultadoSincronizacao Somar(ResultadoSincronizacao outro) => new(
         Lidos + outro.Lidos,
@@ -24,7 +31,8 @@ public sealed record ResultadoSincronizacao(
         Conciliados + outro.Conciliados,
         VinculadosAgenda + outro.VinculadosAgenda,
         IgnoradosSemCpf + outro.IgnoradosSemCpf,
-        IgnoradosSemTelefone + outro.IgnoradosSemTelefone);
+        IgnoradosSemTelefone + outro.IgnoradosSemTelefone,
+        IgnoradosStatusDesconhecido + outro.IgnoradosStatusDesconhecido);
 }
 
 /// <summary>
@@ -103,13 +111,29 @@ public sealed class SincronizarAgendaUseCase(
     {
         var daAgenda = await agendamentoClient.ListarAgendaCompletaDoDiaAsync(dia, ct);
 
-        int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0;
+        int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0, statusDesconhecido = 0;
+        var agendados = new HashSet<string>();
 
         foreach (var item in daAgenda)
         {
             ct.ThrowIfCancellationRequested();
 
-            var statusLocal = MapaStatus.ParaLocal(item.Status ?? StatusAmplimed.Agendado);
+            // Status que não reconhecemos ("Bloqueado", rótulo novo da Amplimed) não vira
+            // "Agendado" por omissão: um horário bloqueado entraria no disparo de confirmação.
+            // Fica de fora do espelho e do conjunto de agendados, e o log diz qual texto veio.
+            if (item.Status is null)
+            {
+                logger.LogWarning(
+                    "Agendamento {Usuclin}:{Id} com status desconhecido \"{Texto}\"; ignorado.",
+                    item.Usuclin, item.IdAgendamento, item.StatusTexto ?? "(vazio)");
+                statusDesconhecido++;
+                continue;
+            }
+
+            var statusLocal = MapaStatus.ParaLocal(item.Status.Value);
+
+            if (item.Status == StatusAmplimed.Agendado)
+                agendados.Add(ResultadoSincronizacao.Chave(item.Usuclin, item.IdAgendamento));
 
             // Caminho curto: já conhecemos o par (usuclin, idAgendamento).
             var existente = await agendamentos.ObterPorIdAmplimedAsync(
@@ -157,7 +181,8 @@ public sealed class SincronizarAgendaUseCase(
         await uow.SalvarAsync(ct);
 
         return new ResultadoSincronizacao(
-            daAgenda.Count, criados, conciliados, vinculados, semCpf, semTelefone);
+            daAgenda.Count, criados, conciliados, vinculados, semCpf, semTelefone,
+            statusDesconhecido, agendados);
     }
 
     /// <summary>
