@@ -39,6 +39,7 @@ public sealed class ProcessarMensagemRecebidaUseCase(
     IAmplimedPacientesClient pacientesClient,
     IAmplimedAgendamentoClient agendamentoClient,
     ISleekFlowClient sleekFlow,
+    CancelarAgendamentoUseCase cancelamento,
     IMensagemLogRepository logs,
     IUnitOfWork uow,
     IRelogio relogio,
@@ -615,8 +616,16 @@ public sealed class ProcessarMensagemRecebidaUseCase(
             return;
         }
 
-        agendamento.Cancelar();
-        await LiberarAgendamentoAsync(agendamento, "Cancelado pelo paciente via WhatsApp", ct);
+        // Um caminho só para cancelar, o mesmo do endpoint da clínica e da
+        // resposta ao template. Ele tenta liberar o horário, cai para a
+        // alteração de status e, se nenhum dos dois der, enfileira na outbox em
+        // vez de dizer ao paciente que cancelou algo que não cancelou. Quem marca
+        // o status é ele: chamar agendamento.Cancelar() antes faria o caso de uso
+        // ver o agendamento já cancelado e sair sem avisar a Amplimed.
+        await cancelamento.ExecutarAsync(
+            agendamento,
+            new PedidoCancelamento("Cancelado pelo paciente via WhatsApp", OrigemCancelamento.Paciente, AvisarPaciente: false),
+            ct);
 
         // A clínica não cobra taxa. A resposta não menciona multa nem para
         // negar: dizer "sem multa" planta a ideia de que poderia haver.
