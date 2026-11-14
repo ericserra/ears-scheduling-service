@@ -296,8 +296,14 @@ variable "amplimed_usuclin" {
 
 variable "sleekflow_base_url" {
   description = <<-TXT
-    Raiz da API da SleekFlow, com barra final. O padrão é a Platform API de
-    produção, que autentica pelo cabeçalho X-Sleekflow-Api-Key.
+    Raiz da API da SleekFlow, com barra final, autenticada pelo cabeçalho
+    X-Sleekflow-Api-Key.
+
+    O padrão é o host regional. api.sleekflow.io NÃO serve para a conta da
+    EARS: lá a chave recebe o mesmo "Authentication failed" que uma chave
+    inventada, enquanto no host regional ela autentica. Os dois respondem 401
+    com o mesmo texto, então só dá para distinguir testando lado a lado com uma
+    chave falsa.
 
     Trocar esta raiz só resolve se o outro ambiente falar o MESMO dialeto:
     mesmas rotas (api/message/send/json, api/contact/addOrUpdate,
@@ -306,7 +312,7 @@ variable "sleekflow_base_url" {
     Bearer e outras rotas, então apontar para lá troca o 401 por 404.
   TXT
   type    = string
-  default = "https://api.sleekflow.io/"
+  default = "https://sleekflow-core-app-eus-production.azurewebsites.net/"
 }
 
 variable "sleekflow_api_key" {

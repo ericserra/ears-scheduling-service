@@ -91,14 +91,23 @@ public sealed class AgendamentoApiOptions
 }
 
 /// <summary>
-/// SleekFlow Platform API. Base <c>https://api.sleekflow.io</c>, autenticada
-/// pelo cabeçalho <c>X-Sleekflow-Api-Key</c> — não é Bearer.
+/// SleekFlow Platform API, autenticada pelo cabeçalho
+/// <c>X-Sleekflow-Api-Key</c>. Não é Bearer: mandar o token em
+/// <c>Authorization</c> faz a API responder 500, porque ela nem lê esse
+/// cabeçalho.
 /// </summary>
+/// <remarks>
+/// A raiz é o host regional, não <c>api.sleekflow.io</c>. Confirmado em
+/// 14/11/2026 com a chave da EARS: no api.sleekflow.io ela recebe o mesmo
+/// "Authentication failed" que uma chave inventada, e no host regional a mesma
+/// chave autentica e a API passa a responder erro de negócio. Diagnosticar isso
+/// custou caro justamente porque os dois devolvem 401 com texto idêntico.
+/// </remarks>
 public sealed class SleekFlowOptions
 {
     public const string SectionName = "SleekFlow";
 
-    public string BaseUrl { get; set; } = "https://api.sleekflow.io/";
+    public string BaseUrl { get; set; } = "https://sleekflow-core-app-eus-production.azurewebsites.net/";
 
     /// <summary>Enviado no cabeçalho <c>X-Sleekflow-Api-Key</c>.</summary>
     public string ApiKey { get; set; } = string.Empty;
