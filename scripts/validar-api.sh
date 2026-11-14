@@ -143,8 +143,8 @@ if [ "$COM_ENVIO" = 1 ]; then
 
   echo
   echo "A confirmação D-1 varre a agenda inteira de amanhã e manda template"
-  echo "para TODOS os pacientes do dia. Rode só com a agenda vazia ou de teste:"
-  echo "  curl -s -X POST '$BASE/admin/confirmacao/disparar' -H \"X-Api-Key: \$ADMIN_KEY\""
+  echo "para TODOS os pacientes do dia. Para testar, limite por telefone e simule antes:"
+  echo "  curl -s -X POST '$BASE/admin/confirmacao/disparar?dia=$amanha&telefones=$TELEFONE&simular=true' -H \"X-Api-Key: \$ADMIN_KEY\""
 else
   secao "7. Envio real: pulado"
   echo "Use --com-envio para incluir. Fora disso, nada sai para paciente nenhum."

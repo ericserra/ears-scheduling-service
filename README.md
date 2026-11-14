@@ -112,7 +112,7 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `POST` | `/webhooks/sleekflow` | recebe mensagens e respostas de botão |
 | `GET` | `/admin/agendamentos?dia=` | agendamentos do dia com status |
 | `GET` | `/admin/logs?pagina=` | trilha de auditoria de mensagens |
-| `POST` | `/admin/confirmacao/disparar` | dispara a varredura D-1 manualmente |
+| `POST` | `/admin/confirmacao/disparar?dia=&telefones=&simular=&reenviar=&todos=` | dispara a confirmação D-1 de um dia. Exige `telefones` ou `todos=true`; `simular=true` não envia; `reenviar=true` repete para quem já recebeu |
 | `POST` | `/admin/agenda/sincronizar?dia=` | força o polling da agenda da Amplimed |
 | `POST` | `/admin/conversas/expirar` | expira conversas paradas e libera etiquetas |
 | `GET` | `/admin/conversas/etiquetas-presas` | pacientes que ficaram sem menu |

@@ -82,13 +82,45 @@ public static class AdminEndpoints
         })
         .WithSummary("Trilha de auditoria de mensagens enviadas e recebidas.");
 
+        // Disparo manual da confirmação D-1, para teste. Sem filtro ele atingiria
+        // todos os pacientes do dia, então exige telefones=... ou todos=true.
         grupo.MapPost("/confirmacao/disparar", async (
-            EnviarConfirmacaoD1UseCase useCase, CancellationToken ct) =>
+            DateOnly? dia, string? telefones, bool? todos, bool? simular, bool? reenviar,
+            EnviarConfirmacaoD1UseCase useCase, IRelogio relogio, CancellationToken ct) =>
         {
-            var enviados = await useCase.ExecutarAsync(ct);
-            return Results.Ok(new { enviados });
+            HashSet<string>? filtro = null;
+
+            if (!string.IsNullOrWhiteSpace(telefones))
+            {
+                filtro = [];
+
+                foreach (var bruto in telefones.Split(
+                             ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (!Telefone.TryCreate(bruto, out var numero) || numero is null)
+                        return Results.BadRequest(new { erro = $"Telefone inválido: {bruto}" });
+
+                    filtro.Add(numero.Value);
+                }
+            }
+
+            if (filtro is null && todos != true)
+            {
+                return Results.BadRequest(new
+                {
+                    erro = "Informe telefones=5551999999999,5551888888888 ou todos=true. " +
+                           "Sem filtro, o disparo atinge todos os pacientes do dia.",
+                });
+            }
+
+            var resultado = await useCase.ExecutarParaDiaAsync(
+                dia ?? relogio.HojeLocal.AddDays(1),
+                new OpcoesDisparo(filtro, simular ?? false, reenviar ?? false),
+                ct);
+
+            return Results.Ok(resultado);
         })
-        .WithSummary("Dispara manualmente a varredura de confirmação D-1.");
+        .WithSummary("Dispara a confirmação D-1 de um dia, com filtro de telefone, simulação e reenvio.");
 
         grupo.MapPost("/agenda/sincronizar", async (
             DateOnly? dia, SincronizarAgendaUseCase useCase,
