@@ -32,6 +32,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
     ISleekFlowClient sleekFlow,
     IMensagemLogRepository logs,
     IOutboxRepository outbox,
+    CancelarAgendamentoUseCase cancelamento,
     IUnitOfWork uow,
     ILogger<ProcessarRespostaConfirmacaoUseCase> logger)
 {
@@ -58,7 +59,9 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                 break;
 
             case RespostaConfirmacao.Cancelar:
-                agendamento.Cancelar();
+                // Quem marca o status é o CancelarAgendamentoUseCase. Marcar
+                // aqui antes faria ele ver o agendamento já cancelado e sair
+                // sem avisar a Amplimed.
                 await LiberarOuCancelarAsync(agendamento, "Cancelado pelo paciente via WhatsApp", ct);
                 await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
                     "Consulta cancelada. Se quiser remarcar, é só escrever por aqui.", ct);
@@ -139,24 +142,25 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
     private async Task LiberarOuCancelarAsync(
         Agendamento agendamento, string motivo, CancellationToken ct)
     {
-        var statusEquivalente = agendamento.Status == StatusAgendamento.Remarcado
-            ? StatusAmplimed.Reagendado
-            : StatusAmplimed.Cancelado;
-
-        if (!agendamento.PodeCancelarNaAmplimed())
+        // Remarcação não é cancelamento: o status equivalente na Amplimed é
+        // Reagendado, e o horário sai da agenda do mesmo jeito.
+        if (agendamento.Status == StatusAgendamento.Remarcado)
         {
-            await PropagarStatusAsync(agendamento, statusEquivalente, ct);
+            if (!agendamento.PodeCancelarNaAmplimed()
+                || !await agendamentoClient.CancelarAsync(agendamento.IdIntegracao!, motivo, ct))
+            {
+                await PropagarStatusAsync(agendamento, StatusAmplimed.Reagendado, ct);
+            }
+
             return;
         }
 
-        if (await agendamentoClient.CancelarAsync(agendamento.IdIntegracao!, motivo, ct))
-            return;
-
-        logger.LogWarning(
-            "cancelar-agendamento não concluiu para {IdIntegracao}; tentando alteração de status.",
-            agendamento.IdIntegracao);
-
-        await PropagarStatusAsync(agendamento, statusEquivalente, ct);
+        // Cancelamento de verdade: um caminho só, compartilhado com o endpoint
+        // da clínica e com o nó HTTP do Flow Builder.
+        await cancelamento.ExecutarAsync(
+            agendamento,
+            new PedidoCancelamento(motivo, OrigemCancelamento.Paciente, AvisarPaciente: false),
+            ct);
     }
 
     private Task EnfileirarAsync(string tipo, object payload, CancellationToken ct) =>

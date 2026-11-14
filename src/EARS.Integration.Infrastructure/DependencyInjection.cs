@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IniciarAtendimentoUseCase>();
         services.AddScoped<ExpirarConversasUseCase>();
         services.AddScoped<ProcessarRespostaConfirmacaoUseCase>();
+        services.AddScoped<CancelarAgendamentoUseCase>();
         services.AddScoped<EnviarConfirmacaoD1UseCase>();
         services.AddScoped<EnviarLembreteUseCase>();
         services.AddScoped<SincronizarAgendaUseCase>();

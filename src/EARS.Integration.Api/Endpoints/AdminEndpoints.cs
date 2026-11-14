@@ -162,6 +162,57 @@ public static class AdminEndpoints
         })
         .WithSummary("Registra um telefone na lista de descadastro.");
 
+        // Cancelamento pela recepção ou por outro sistema da clínica. Aceita os
+        // três identificadores que existem na prática: o par da agenda, o UUID
+        // da integração e o telefone do paciente.
+        grupo.MapPost("/agendamentos/cancelar", async (
+            long? idAgendamento,
+            string? usuclin,
+            string? idIntegracao,
+            string? telefone,
+            string? motivo,
+            bool? avisarPaciente,
+            CancelarAgendamentoUseCase cancelamento,
+            IOptions<AmplimedOptions> opcoes,
+            CancellationToken ct) =>
+        {
+            var pedido = new PedidoCancelamento(
+                motivo, OrigemCancelamento.Clinica, avisarPaciente ?? true);
+
+            ResultadoCancelamento resultado;
+
+            if (idAgendamento is { } numero)
+            {
+                var clinica = string.IsNullOrWhiteSpace(usuclin)
+                    ? opcoes.Value.Agendamento.Usuclin
+                    : usuclin;
+
+                if (string.IsNullOrWhiteSpace(clinica))
+                    return Results.BadRequest(new { erro = "usuclin não informado e não configurado." });
+
+                resultado = await cancelamento.PorIdAmplimedAsync(clinica, numero, pedido, ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(idIntegracao))
+            {
+                resultado = await cancelamento.PorIdIntegracaoAsync(idIntegracao, pedido, ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(telefone))
+            {
+                resultado = await cancelamento.PorTelefoneAsync(telefone, pedido, ct);
+            }
+            else
+            {
+                return Results.BadRequest(new
+                {
+                    erro = "Informe idAgendamento, idIntegracao ou telefone.",
+                    exemplo = "/admin/agendamentos/cancelar?idAgendamento=154788&motivo=Paciente%20ligou",
+                });
+            }
+
+            return resultado.Cancelado ? Results.Ok(resultado) : Results.NotFound(resultado);
+        })
+        .WithSummary("Cancela um agendamento na Amplimed e avisa o paciente.");
+
         // Responde à pergunta que a documentação deixou em aberto: o "Buscar
         // Paciente" aceita mesmo o filtro de CPF, ou devolve a lista inteira?
         // Se devolver tudo, casar pelo primeiro registro marcaria consulta no

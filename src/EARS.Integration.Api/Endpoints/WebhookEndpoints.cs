@@ -33,6 +33,11 @@ public static class WebhookEndpoints
         [property: JsonPropertyName("conversaId")] string? ConversaId,
         [property: JsonPropertyName("nome")] string? Nome);
 
+    /// <summary>Corpo do nó HTTP de cancelamento do Flow Builder.</summary>
+    public sealed record CancelarCorpo(
+        [property: JsonPropertyName("telefone")] string? Telefone,
+        [property: JsonPropertyName("motivo")] string? Motivo);
+
     public static void MapWebhookEndpoints(this IEndpointRouteBuilder app)
     {
         var grupo = app.MapGroup("/webhooks").WithTags("Webhooks");
@@ -75,6 +80,38 @@ public static class WebhookEndpoints
         })
         .WithName("IniciarAtendimento")
         .WithSummary("Entrega a conversa ao motor, a partir dos ramos 1 e 3 do menu.");
+
+        // Cancelamento pedido pelo Flow Builder, para o ramo em que o paciente
+        // escolhe cancelar antes de o motor assumir a conversa.
+        grupo.MapPost("/sleekflow/cancelar", async (
+            CancelarCorpo corpo,
+            HttpRequest request,
+            CancelarAgendamentoUseCase cancelamento,
+            IOptions<SleekFlowOptions> options,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("Webhook.Cancelamento");
+
+            if (!AssinaturaValida(request, options.Value, logger))
+                return Results.Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(corpo.Telefone))
+                return Results.BadRequest(new { erro = "telefone é obrigatório." });
+
+            var resultado = await cancelamento.PorTelefoneAsync(
+                corpo.Telefone!,
+                new PedidoCancelamento(corpo.Motivo, OrigemCancelamento.FlowBuilder, AvisarPaciente: false),
+                ct);
+
+            // 404 quando não há o que cancelar: o fluxo deve seguir para a
+            // Recepção em vez de dizer ao paciente que cancelou algo.
+            return resultado.Cancelado
+                ? Results.Ok(resultado)
+                : Results.Json(resultado, statusCode: StatusCodes.Status404NotFound);
+        })
+        .WithName("CancelarPeloFlowBuilder")
+        .WithSummary("Cancela o agendamento ativo do telefone informado.");
 
         grupo.MapPost("/sleekflow", async (
             HttpRequest request,
