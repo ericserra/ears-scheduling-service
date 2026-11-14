@@ -78,8 +78,11 @@ sleekflow_canal = "whatsappcloudapi"
 # Só o 360dialog exige namespace de template.
 # sleekflow_template_namespace = ""
 
-# PRECISA bater exatamente com a condição de inscrição do fluxo de entrada.
-sleekflow_etiqueta_em_curso = "agendamento-em-curso"
+# PRECISA bater, caractere por caractere, com o nome da etiqueta no SleekFlow e
+# com a condição de inscrição dos fluxos. Na conta da EARS a etiqueta existente
+# se chama "agendamento em curso", com espaços, não com hífens. Confira em
+# Contatos > Etiquetas antes de aplicar.
+sleekflow_etiqueta_em_curso = "agendamento em curso"
 
 # A Platform API não atribui conversa a equipe; a entrega à Recepção é por
 # etiqueta, que dispara um fluxo no Flow Builder.

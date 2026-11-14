@@ -40,6 +40,11 @@ namespace EARS.Integration.Infrastructure.Migrations
                     b.Property<int?>("DuracaoMinutos")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EtiquetaConfirmacaoAplicada")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<long?>("IdAgendamentoAmplimed")
                         .HasColumnType("bigint");
 

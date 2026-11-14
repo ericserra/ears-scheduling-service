@@ -53,6 +53,14 @@ public interface IAgendamentoRepository
     /// <summary>Último agendamento ativo do telefone, para correlacionar a resposta ao botão.</summary>
     Task<Agendamento?> ObterAtivoMaisRecentePorTelefoneAsync(string telefone, CancellationToken ct = default);
 
+    /// <summary>
+    /// Agendamentos cuja etiqueta da confirmação D-1 segue no contato e cujo
+    /// envio é anterior ao limite. Base da liberação do menu para quem nunca
+    /// respondeu ao template.
+    /// </summary>
+    Task<IReadOnlyList<Agendamento>> ListarComEtiquetaDeConfirmacaoAsync(
+        DateTimeOffset enviadosAntesDe, int maximo, CancellationToken ct = default);
+
     Task AdicionarAsync(Agendamento agendamento, CancellationToken ct = default);
 }
 

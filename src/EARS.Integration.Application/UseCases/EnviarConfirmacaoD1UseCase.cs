@@ -70,6 +70,8 @@ public sealed class EnviarConfirmacaoD1UseCase(
             {
                 agendamento.MarcarConfirmacaoEnviada();
                 enviados++;
+
+                await MarcarEtiquetaAsync(agendamento, telefone, ct);
             }
             else
             {
@@ -112,6 +114,25 @@ public sealed class EnviarConfirmacaoD1UseCase(
         }
 
         return await agendamentos.ListarPorDiaAsync(dia, ct);
+    }
+
+    /// <summary>
+    /// O fluxo do webhook só dispara para contato com a etiqueta de agendamento
+    /// em curso. Sem ela, a resposta aos botões do template cai no menu. O envio
+    /// já saiu, então a falha aqui não desfaz nada: fica no log para a recepção.
+    /// </summary>
+    private async Task MarcarEtiquetaAsync(Agendamento agendamento, string telefone, CancellationToken ct)
+    {
+        if (await sleekFlow.MarcarAgendamentoEmCursoAsync(telefone, ct))
+        {
+            agendamento.MarcarEtiquetaConfirmacaoAplicada();
+            return;
+        }
+
+        logger.LogError(
+            "Confirmação enviada para {Telefone}, mas a etiqueta de agendamento em curso não foi aplicada. " +
+            "A resposta aos botões pode não chegar ao fluxo do webhook.",
+            telefone);
     }
 
     private static string PrimeiroNome(string nomeCompleto) =>

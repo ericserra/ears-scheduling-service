@@ -53,6 +53,14 @@ public sealed class AutomacaoOptions
     /// <summary>Janela de inatividade após a qual a conversa expira.</summary>
     public TimeSpan ExpiracaoConversa { get; set; } = TimeSpan.FromHours(6);
 
+    /// <summary>
+    /// Quanto tempo a etiqueta de agendamento em curso fica no contato depois do
+    /// envio da confirmação D-1, quando o paciente não responde. Passado o prazo,
+    /// o job de expiração a remove e o menu volta a abrir. Padrão: 18 horas, o
+    /// bastante para o D-1 das 17h ser respondido até a manhã seguinte.
+    /// </summary>
+    public TimeSpan ExpiracaoEtiquetaConfirmacao { get; set; } = TimeSpan.FromHours(18);
+
     /// <summary>Teto de tentativas da outbox antes da falha definitiva.</summary>
     public int MaxTentativasOutbox { get; set; } = 8;
 

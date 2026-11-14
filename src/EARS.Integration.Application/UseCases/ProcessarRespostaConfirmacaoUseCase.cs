@@ -56,6 +56,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                 await PropagarStatusAsync(agendamento, StatusAmplimed.Confirmado, ct);
                 await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
                     "Consulta confirmada. Até breve!", ct);
+                await LiberarEtiquetaAsync(agendamento, mensagem.Telefone, ct);
                 break;
 
             case RespostaConfirmacao.Cancelar:
@@ -67,6 +68,8 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                     "Consulta cancelada. Se quiser remarcar, é só escrever por aqui.", ct);
                 await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
                     $"CANCELAMENTO — {agendamento.ProfissionalNome} em {agendamento.InicioEm:dd/MM HH:mm}. Horário liberado.", ct);
+                // A transferência já troca as etiquetas: tira a de agendamento em curso.
+                agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
 
             case RespostaConfirmacao.Remarcar:
@@ -81,6 +84,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                     agendamento.Id);
                 await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
                     $"Resposta não compreendida sobre a consulta de {agendamento.InicioEm:dd/MM HH:mm}: \"{mensagem.Texto}\"", ct);
+                agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
         }
 
@@ -161,6 +165,27 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
             agendamento,
             new PedidoCancelamento(motivo, OrigemCancelamento.Paciente, AvisarPaciente: false),
             ct);
+    }
+
+    /// <summary>
+    /// Consulta confirmada encerra a conversa: o paciente volta a ter o menu.
+    /// Na remarcação a etiqueta fica, porque o atendimento continua e quem a
+    /// tira é a saída do fluxo (ou, no fim, o job de expiração).
+    /// </summary>
+    private async Task LiberarEtiquetaAsync(Agendamento agendamento, string telefone, CancellationToken ct)
+    {
+        if (!agendamento.EtiquetaConfirmacaoAplicada) return;
+
+        if (await sleekFlow.LimparAgendamentoEmCursoAsync(telefone, ct))
+        {
+            agendamento.MarcarEtiquetaConfirmacaoRemovida();
+            return;
+        }
+
+        // Fica marcada de propósito: o job de expiração tenta de novo.
+        logger.LogError(
+            "Não foi possível remover a etiqueta de agendamento em curso de {Telefone} após a confirmação.",
+            telefone);
     }
 
     private Task EnfileirarAsync(string tipo, object payload, CancellationToken ct) =>

@@ -110,11 +110,22 @@ public class Agendamento : EntidadeBase
 
     public DateTimeOffset? RespondidoEm { get; private set; }
 
+    /// <summary>
+    /// Se a etiqueta de agendamento em curso foi aplicada ao contato no envio da
+    /// confirmação D-1. É ela que faz o fluxo do webhook receber a resposta aos
+    /// botões, e é ela que precisa cair depois — o job de expiração lê esta
+    /// coluna para saber de quem tirar.
+    /// </summary>
+    public bool EtiquetaConfirmacaoAplicada { get; private set; }
+
     /// <summary>Última vez que o status foi conciliado com a agenda da Amplimed.</summary>
     public DateTimeOffset? SincronizadoEm { get; private set; }
 
     public void MarcarConfirmacaoEnviada() { ConfirmacaoEnviadaEm = DateTimeOffset.UtcNow; Tocar(); }
     public void MarcarLembreteEnviado() { LembreteEnviadoEm = DateTimeOffset.UtcNow; Tocar(); }
+
+    public void MarcarEtiquetaConfirmacaoAplicada() { EtiquetaConfirmacaoAplicada = true; Tocar(); }
+    public void MarcarEtiquetaConfirmacaoRemovida() { EtiquetaConfirmacaoAplicada = false; Tocar(); }
 
     /// <summary>
     /// Late binding do par (usuclin, idAgendamento): o agendamento criado pela

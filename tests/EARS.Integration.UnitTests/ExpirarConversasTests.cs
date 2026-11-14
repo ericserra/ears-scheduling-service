@@ -3,6 +3,7 @@ using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
+using EARS.Integration.Domain.ValueObjects;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -19,11 +20,12 @@ namespace EARS.Integration.UnitTests;
 public class ExpirarConversasTests
 {
     private readonly IConversaRepository _conversas = Substitute.For<IConversaRepository>();
+    private readonly IAgendamentoRepository _agendamentos = Substitute.For<IAgendamentoRepository>();
     private readonly ISleekFlowClient _sleekFlow = Substitute.For<ISleekFlowClient>();
     private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
 
     private ExpirarConversasUseCase Criar() => new(
-        _conversas, _sleekFlow, _uow,
+        _conversas, _agendamentos, _sleekFlow, _uow,
         Options.Create(new AutomacaoOptions()),
         NullLogger<ExpirarConversasUseCase>.Instance);
 
@@ -90,6 +92,69 @@ public class ExpirarConversasTests
         (await Criar().ExecutarAsync()).Should().Be(0);
 
         await _uow.DidNotReceive().SalvarAsync(Arg.Any<CancellationToken>());
+    }
+
+    private static Agendamento ComEtiquetaDeConfirmacao(string telefone = "5551988887777")
+    {
+        var paciente = new Paciente("Maria Souza", Telefone.Create(telefone));
+        var agendamento = Agendamento.DaAgenda(
+            "57622", 154790, paciente.Id, "Dra. Inesângela",
+            DateTimeOffset.UtcNow.AddHours(12), 30, StatusAgendamento.Agendado);
+
+        typeof(Agendamento).GetProperty(nameof(Agendamento.Paciente))!.SetValue(agendamento, paciente);
+        agendamento.MarcarConfirmacaoEnviada();
+        agendamento.MarcarEtiquetaConfirmacaoAplicada();
+        return agendamento;
+    }
+
+    [Fact]
+    public async Task EtiquetaDaConfirmacaoSemRespostaEhRemovida()
+    {
+        var agendamento = ComEtiquetaDeConfirmacao();
+        _conversas.ListarParadasAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _agendamentos.ListarComEtiquetaDeConfirmacaoAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([agendamento]);
+        _sleekFlow.LimparAgendamentoEmCursoAsync("5551988887777", Arg.Any<CancellationToken>()).Returns(true);
+
+        await Criar().ExecutarAsync();
+
+        agendamento.EtiquetaConfirmacaoAplicada.Should().BeFalse();
+        await _sleekFlow.Received(1).LimparAgendamentoEmCursoAsync("5551988887777", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EtiquetaDaConfirmacaoFicaQuandoHaConversaAtivaDoContato()
+    {
+        var agendamento = ComEtiquetaDeConfirmacao();
+        _conversas.ListarParadasAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _agendamentos.ListarComEtiquetaDeConfirmacaoAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([agendamento]);
+        _conversas.ObterAtivaPorTelefoneAsync("5551988887777", Arg.Any<CancellationToken>())
+            .Returns(ConversaEmCurso());
+
+        await Criar().ExecutarAsync();
+
+        agendamento.EtiquetaConfirmacaoAplicada.Should().BeTrue(
+            "a etiqueta passou a ser da conversa, e a expiração dela é que a remove");
+        await _sleekFlow.DidNotReceive()
+            .LimparAgendamentoEmCursoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FalhaAoRemoverEtiquetaDaConfirmacaoMantemAMarca()
+    {
+        var agendamento = ComEtiquetaDeConfirmacao();
+        _conversas.ListarParadasAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _agendamentos.ListarComEtiquetaDeConfirmacaoAsync(Arg.Any<DateTimeOffset>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([agendamento]);
+        _sleekFlow.LimparAgendamentoEmCursoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        await Criar().ExecutarAsync();
+
+        agendamento.EtiquetaConfirmacaoAplicada.Should().BeTrue("a próxima execução tenta de novo");
     }
 
     [Fact]

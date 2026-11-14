@@ -98,7 +98,8 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `Automacao__ConfirmacaoAtiva` | `false` | liga o Módulo 2 (confirmação e lembrete) |
 | `Automacao__CronExpiracaoConversa` | `0 0/10 * * * ?` | devolve o menu a quem desistiu no meio |
 | `SleekFlow__RemetenteTelefone` | — | número da clínica; sem ele nenhuma mensagem sai |
-| `SleekFlow__EtiquetaAgendamentoEmCurso` | `agendamento-em-curso` | precisa bater com o gatilho do fluxo |
+| `SleekFlow__EtiquetaAgendamentoEmCurso` | `agendamento-em-curso` | precisa bater com o nome da etiqueta no SleekFlow e com o gatilho dos fluxos (na EARS: `agendamento em curso`, com espaços) |
+| `Automacao__ExpiracaoEtiquetaConfirmacao` | `18:00:00` | quanto a etiqueta da confirmação D-1 fica no contato sem resposta |
 | `Automacao__DiasSincronizacaoAgenda` | `2` | janela do polling, contando hoje |
 | `Amplimed__Agendamento__Usuclin` | — | número da clínica; sem ele o cenário A não roda |
 
