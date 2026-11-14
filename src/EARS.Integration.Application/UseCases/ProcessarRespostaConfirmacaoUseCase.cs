@@ -73,9 +73,17 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                 break;
 
             case RespostaConfirmacao.Remarcar:
+                // Quem pede para remarcar ainda não escolheu outro horário. Liberar
+                // o atual agora deixaria o paciente sem consulta e sem resposta,
+                // porque nada aqui conduz a escolha do novo. Fica reservado até a
+                // recepção remarcar; o status local já evita o lembrete da manhã.
                 agendamento.MarcarRemarcado();
-                await LiberarOuCancelarAsync(agendamento, "Remarcação solicitada pelo paciente via WhatsApp", ct);
-                // O fluxo do Módulo 1 assume a partir daqui, já com o profissional conhecido.
+                await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
+                    "Certo! Vou encaminhar para a nossa equipe, que combina o novo horário com você por aqui.", ct);
+                await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
+                    $"REMARCAÇÃO — {agendamento.ProfissionalNome} em {agendamento.InicioEm:dd/MM HH:mm}. " +
+                    "O horário original segue reservado na agenda até a recepção remarcar.", ct);
+                agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
 
             default:
@@ -169,8 +177,8 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
 
     /// <summary>
     /// Consulta confirmada encerra a conversa: o paciente volta a ter o menu.
-    /// Na remarcação a etiqueta fica, porque o atendimento continua e quem a
-    /// tira é a saída do fluxo (ou, no fim, o job de expiração).
+    /// Cancelamento, remarcação e resposta não compreendida passam pela
+    /// transferência para a recepção, que já troca as etiquetas.
     /// </summary>
     private async Task LiberarEtiquetaAsync(Agendamento agendamento, string telefone, CancellationToken ct)
     {
