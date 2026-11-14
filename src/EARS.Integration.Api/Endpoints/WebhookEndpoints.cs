@@ -211,17 +211,73 @@ public static class WebhookEndpoints
     /// </summary>
     private static MensagemRecebida? Normalizar(JsonElement raiz)
     {
-        if (!raiz.TryGetProperty("message", out var msg)) return null;
+        // Dois formatos, de propósito.
+        //
+        // O plano: o nó HTTP do Flow Builder monta o corpo à mão, e o que ele
+        // manda hoje é plano — telefone, mensagem, contatoId. Era este o
+        // formato que faltava: a versão anterior só entendia o aninhado, então
+        // toda mensagem de paciente virava 204 e sumia sem deixar rastro.
+        //
+        // O aninhado: é a forma do webhook nativo da SleekFlow, caso um dia a
+        // integração passe por ele em vez do nó HTTP.
+        var telefone = Texto(raiz, "telefone", "from", "phoneNumber", "whatsappPhoneNumber");
+        var texto = Texto(raiz, "mensagem", "texto", "text", "messageContent");
+        var botao = Texto(raiz, "botaoPayload", "buttonPayload", "payload", "quickReplyPayload");
+        var contato = Texto(raiz, "contatoId", "contactId");
+        var recebida = Instante(Texto(raiz, "recebidaEm", "createdAt", "timestamp"));
 
-        var telefone = msg.TryGetProperty("from", out var f) ? f.GetString() : null;
+        if (raiz.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.Object)
+        {
+            telefone ??= Texto(msg, "from", "telefone", "phoneNumber");
+            texto ??= Texto(msg, "text", "mensagem", "messageContent");
+            botao ??= Texto(msg, "buttonPayload", "botaoPayload", "payload");
+            recebida ??= Instante(Texto(msg, "createdAt", "timestamp", "recebidaEm"));
+        }
+
+        if (contato is null
+            && raiz.TryGetProperty("contact", out var c)
+            && c.ValueKind == JsonValueKind.Object)
+        {
+            contato = Texto(c, "id", "contactId");
+        }
+
+        // Sem telefone não dá para saber de quem é a mensagem. Sem conteúdo
+        // nenhum também não há o que interpretar: é evento de sistema, não
+        // resposta de paciente.
         if (string.IsNullOrWhiteSpace(telefone)) return null;
+        if (string.IsNullOrWhiteSpace(texto) && string.IsNullOrWhiteSpace(botao)) return null;
 
-        var texto = msg.TryGetProperty("text", out var t) ? t.GetString() : null;
-        var botao = msg.TryGetProperty("buttonPayload", out var b) ? b.GetString() : null;
-        var contato = raiz.TryGetProperty("contact", out var c) && c.TryGetProperty("id", out var cid)
-            ? cid.GetString()
-            : null;
-
-        return new MensagemRecebida(telefone, contato, texto, botao, DateTimeOffset.UtcNow);
+        return new MensagemRecebida(
+            telefone!, contato, texto, botao, recebida ?? DateTimeOffset.UtcNow);
     }
+
+    /// <summary>Primeiro nome de campo que existir e trouxer texto não vazio.</summary>
+    private static string? Texto(JsonElement objeto, params string[] nomes)
+    {
+        if (objeto.ValueKind != JsonValueKind.Object) return null;
+
+        foreach (var nome in nomes)
+        {
+            if (!objeto.TryGetProperty(nome, out var valor)) continue;
+
+            var bruto = valor.ValueKind switch
+            {
+                JsonValueKind.String => valor.GetString(),
+                JsonValueKind.Number => valor.ToString(),
+                _ => null,
+            };
+
+            if (!string.IsNullOrWhiteSpace(bruto)) return bruto;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A data vem do SleekFlow em formato variável, e às vezes vem o
+    /// marcador não substituído do Flow Builder. Não dá para deixar isso
+    /// derrubar a mensagem inteira: na dúvida, agora.
+    /// </summary>
+    private static DateTimeOffset? Instante(string? bruto) =>
+        DateTimeOffset.TryParse(bruto, out var quando) ? quando : null;
 }
