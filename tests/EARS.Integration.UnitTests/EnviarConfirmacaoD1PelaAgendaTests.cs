@@ -36,6 +36,7 @@ public class EnviarConfirmacaoD1PelaAgendaTests
     public EnviarConfirmacaoD1PelaAgendaTests()
     {
         _relogio.HojeLocal.Returns(Dia.AddDays(-1));
+        _relogio.ParaLocal(Arg.Any<DateTimeOffset>()).Returns(c => c.Arg<DateTimeOffset>().ToOffset(TimeSpan.FromHours(-3)));
         _relogio.AgoraUtc.Returns(_agora);
         _sleekFlow.EnviarTemplateAsync(Arg.Any<EnvioTemplateRequest>(), Arg.Any<CancellationToken>())
             .Returns(ResultadoEnvio.Ok("msg-1"));
@@ -220,5 +221,34 @@ public class EnviarConfirmacaoD1PelaAgendaTests
         var resultado = await Criar().ExecutarParaDiaAsync(Dia, Geral);
 
         resultado.Enviados.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task OHorarioDoTemplateSaiNoFusoDaClinicaENaoEmUtc()
+    {
+        // 12:00 UTC é 09:00 em Brasília: é o que o paciente precisa ler.
+        var consulta = Consulta(1);
+        Dia16(new[] { ItemDaAgenda(1, StatusAmplimed.Agendado) }, consulta);
+
+        await Criar().ExecutarParaDiaAsync(Dia, Geral);
+
+        await _sleekFlow.Received(1).EnviarTemplateAsync(
+            Arg.Is<EnvioTemplateRequest>(r =>
+                r.Variaveis.Any(v => v.Nome == "hora" && v.Valor == "09:00")
+                && r.Variaveis.Any(v => v.Nome == "data" && v.Valor == "16/11")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void HorarioDaAgendaComOffsetEGravadoEmUtc()
+    {
+        // O Npgsql recusa DateTimeOffset com offset diferente de zero.
+        var consulta = Consulta(1);
+        var comOffset = new DateTimeOffset(2026, 11, 16, 9, 0, 0, TimeSpan.FromHours(-3));
+
+        consulta.ConciliarComAgenda(StatusAgendamento.Agendado, comOffset, 30);
+
+        consulta.InicioEm.Offset.Should().Be(TimeSpan.Zero);
+        consulta.InicioEm.Should().Be(comOffset);
     }
 }

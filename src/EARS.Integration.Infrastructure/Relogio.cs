@@ -21,6 +21,9 @@ public sealed class Relogio(IOptions<AutomacaoOptions> options) : IRelogio
 
     public DateOnly HojeLocal => DateOnly.FromDateTime(AgoraLocal.Date);
 
+    public DateTimeOffset ParaLocal(DateTimeOffset instante) =>
+        TimeZoneInfo.ConvertTime(instante, _fuso);
+
     /// <remarks>
     /// Devolvido em UTC de propósito. O instante é calculado no fuso da
     /// clínica, que é o que importa para a borda do dia, mas o Npgsql recusa

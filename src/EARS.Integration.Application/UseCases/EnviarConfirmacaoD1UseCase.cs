@@ -112,6 +112,8 @@ public sealed class EnviarConfirmacaoD1UseCase(
                 continue;
             }
 
+            var inicioLocal = relogio.ParaLocal(agendamento.InicioEm);
+
             // O template não menciona especialidade nem motivo da consulta (Cláusula 13ª, § 2º).
             var request = new EnvioTemplateRequest(
                 telefone,
@@ -120,15 +122,15 @@ public sealed class EnviarConfirmacaoD1UseCase(
                 {
                     new("nome", PrimeiroNome(agendamento.Paciente!.Nome)),
                     new("profissional", agendamento.ProfissionalNome),
-                    new("data", agendamento.InicioEm.ToString("dd/MM")),
-                    new("hora", agendamento.InicioEm.ToString("HH:mm"))
+                    new("data", inicioLocal.ToString("dd/MM")),
+                    new("hora", inicioLocal.ToString("HH:mm"))
                 });
 
             var resultado = await sleekFlow.EnviarTemplateAsync(request, ct);
 
             await logs.AdicionarAsync(new MensagemLog(
                 telefone, TipoMensagem.EnviadaTemplate, _opcoes.Templates.Confirmacao,
-                $"confirmacao D-1 · {agendamento.InicioEm:dd/MM HH:mm}",
+                $"confirmacao D-1 · {inicioLocal:dd/MM HH:mm}",
                 agendamento.Id, resultado.Sucesso, resultado.Erro), ct);
 
             if (resultado.Sucesso)

@@ -118,6 +118,10 @@ public sealed class SincronizarAgendaUseCase(
         {
             ct.ThrowIfCancellationRequested();
 
+            // A agenda manda o horário com -03:00 e o Npgsql só aceita offset zero, tanto
+            // para gravar quanto para consultar. O instante é o mesmo; muda a representação.
+            var inicio = item.Inicio.ToUniversalTime();
+
             // Status que não reconhecemos ("Bloqueado", rótulo novo da Amplimed) não vira
             // "Agendado" por omissão: um horário bloqueado entraria no disparo de confirmação.
             // Fica de fora do espelho e do conjunto de agendados, e o log diz qual texto veio.
@@ -141,7 +145,7 @@ public sealed class SincronizarAgendaUseCase(
 
             if (existente is not null)
             {
-                existente.ConciliarComAgenda(statusLocal, item.Inicio, item.DuracaoMinutos);
+                existente.ConciliarComAgenda(statusLocal, inicio, item.DuracaoMinutos);
                 conciliados++;
                 continue;
             }
@@ -156,12 +160,12 @@ public sealed class SincronizarAgendaUseCase(
             }
 
             // Late binding: o que nasceu no WhatsApp ainda não tem o par inteiro.
-            var semVinculo = await agendamentos.ObterSemVinculoDaAgendaAsync(paciente.Id, item.Inicio, ct);
+            var semVinculo = await agendamentos.ObterSemVinculoDaAgendaAsync(paciente.Id, inicio, ct);
 
             if (semVinculo is not null)
             {
                 semVinculo.VincularAgenda(item.Usuclin, item.IdAgendamento);
-                semVinculo.ConciliarComAgenda(statusLocal, item.Inicio, item.DuracaoMinutos);
+                semVinculo.ConciliarComAgenda(statusLocal, inicio, item.DuracaoMinutos);
                 vinculados++;
                 continue;
             }
@@ -171,7 +175,7 @@ public sealed class SincronizarAgendaUseCase(
                 item.IdAgendamento,
                 paciente.Id,
                 item.Profissional.Nome,
-                item.Inicio,
+                inicio,
                 item.DuracaoMinutos,
                 statusLocal), ct);
 

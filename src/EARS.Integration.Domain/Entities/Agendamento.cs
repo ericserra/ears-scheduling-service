@@ -41,7 +41,7 @@ public class Agendamento : EntidadeBase
             PacienteId = pacienteId,
             ProfissionalId = profissionalId,
             ProfissionalNome = profissionalNome,
-            InicioEm = inicioEm,
+            InicioEm = inicioEm.ToUniversalTime(),
             DuracaoMinutos = duracaoMinutos,
             Origem = OrigemAgendamento.WhatsApp,
             Status = StatusAgendamento.Agendado
@@ -69,7 +69,7 @@ public class Agendamento : EntidadeBase
             IdAgendamentoAmplimed = idAgendamentoAmplimed,
             PacienteId = pacienteId,
             ProfissionalNome = profissionalNome,
-            InicioEm = inicioEm,
+            InicioEm = inicioEm.ToUniversalTime(),
             DuracaoMinutos = duracaoMinutos,
             Origem = OrigemAgendamento.Amplimed,
             Status = status
@@ -185,7 +185,8 @@ public class Agendamento : EntidadeBase
     {
         SincronizadoEm = DateTimeOffset.UtcNow;
 
-        if (inicioRemoto != InicioEm) InicioEm = inicioRemoto;
+        // O Npgsql só grava timestamptz com offset zero; a agenda vem com -03:00.
+        if (inicioRemoto != InicioEm) InicioEm = inicioRemoto.ToUniversalTime();
         if (duracaoRemota is not null) DuracaoMinutos = duracaoRemota;
 
         var podeSobrescrever = RespondidoEm is null && Status != StatusAgendamento.NaoConfirmado;

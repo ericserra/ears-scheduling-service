@@ -42,14 +42,14 @@ public sealed class EnviarLembreteUseCase(
                 new List<VariavelTemplate>
                 {
                     new("nome", agendamento.Paciente!.Nome.Split(' ')[0]),
-                    new("hora", agendamento.InicioEm.ToString("HH:mm"))
+                    new("hora", relogio.ParaLocal(agendamento.InicioEm).ToString("HH:mm"))
                 });
 
             var resultado = await sleekFlow.EnviarTemplateAsync(request, ct);
 
             await logs.AdicionarAsync(new MensagemLog(
                 telefone, TipoMensagem.EnviadaTemplate, _opcoes.Templates.Lembrete,
-                $"lembrete · {agendamento.InicioEm:dd/MM HH:mm}",
+                $"lembrete · {relogio.ParaLocal(agendamento.InicioEm):dd/MM HH:mm}",
                 agendamento.Id, resultado.Sucesso, resultado.Erro), ct);
 
             if (resultado.Sucesso)

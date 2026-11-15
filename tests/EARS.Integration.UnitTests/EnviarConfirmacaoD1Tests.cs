@@ -32,6 +32,7 @@ public class EnviarConfirmacaoD1Tests
     public EnviarConfirmacaoD1Tests()
     {
         _relogio.HojeLocal.Returns(Dia.AddDays(-1));
+        _relogio.ParaLocal(Arg.Any<DateTimeOffset>()).Returns(c => c.Arg<DateTimeOffset>().ToOffset(TimeSpan.FromHours(-3)));
         _sleekFlow.EnviarTemplateAsync(Arg.Any<EnvioTemplateRequest>(), Arg.Any<CancellationToken>())
             .Returns(ResultadoEnvio.Ok("msg-1"));
         _sleekFlow.MarcarAgendamentoEmCursoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())

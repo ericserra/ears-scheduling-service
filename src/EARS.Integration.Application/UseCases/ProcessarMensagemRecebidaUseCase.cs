@@ -574,7 +574,8 @@ public sealed class ProcessarMensagemRecebidaUseCase(
 
         conversa.RegistrarAgendamentoAlvo(agendamento.Id);
 
-        var descricao = $"{agendamento.ProfissionalNome} em {agendamento.InicioEm:dd/MM} às {agendamento.InicioEm:HH:mm}";
+        var inicioLocal = relogio.ParaLocal(agendamento.InicioEm);
+        var descricao = $"{agendamento.ProfissionalNome} em {inicioLocal:dd/MM} às {inicioLocal:HH:mm}";
 
         if (conversa.Motivo == MotivoAtendimento.Cancelar)
         {

@@ -8,6 +8,13 @@ public interface IRelogio
     DateOnly HojeLocal { get; }
 
     /// <summary>
+    /// Converte um instante para o fuso da clínica, para exibição ao paciente.
+    /// O banco devolve <c>timestamptz</c> em UTC; formatar direto mostraria o
+    /// horário três horas adiantado.
+    /// </summary>
+    DateTimeOffset ParaLocal(DateTimeOffset instante);
+
+    /// <summary>
     /// Instante em que o dia local começa, no fuso da clínica.
     /// </summary>
     /// <remarks>
