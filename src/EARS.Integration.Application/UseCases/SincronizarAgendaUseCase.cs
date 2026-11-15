@@ -190,8 +190,8 @@ public sealed class SincronizarAgendaUseCase(
 
                 descartados.Add(Descartado(item, inicio,
                     string.IsNullOrWhiteSpace(item.Beneficiario.Cpf)
-                        ? "paciente sem CPF no cadastro"
-                        : "CPF sem cadastro na API de Pacientes ou sem celular válido"));
+                        ? "paciente sem CPF e sem celular válido na agenda"
+                        : "CPF sem cadastro na API de Pacientes e sem celular válido na agenda"));
                 continue;
             }
 
@@ -237,9 +237,10 @@ public sealed class SincronizarAgendaUseCase(
         motivo);
 
     /// <summary>
-    /// Resolve o paciente da agenda no espelho local, buscando o celular na API
-    /// de Pacientes quando ele ainda não é conhecido. Devolve <c>null</c> quando
-    /// não há como enviar mensagem — sem CPF para buscar, ou sem celular válido.
+    /// Resolve o paciente da agenda no espelho local. Ordem: codRef nosso; CPF (com o
+    /// celular buscado na API de Pacientes); e, sem CPF ou sem cadastro por CPF, o
+    /// <c>celular</c> que a própria agenda traz, junto com o nome. Devolve <c>null</c>
+    /// quando não há como enviar mensagem — sem celular válido ou sem nome.
     /// </summary>
     private async Task<Paciente?> ResolverPacienteAsync(
         BeneficiarioDaAgenda beneficiario, Dictionary<string, Paciente?> pacientesDoDia, CancellationToken ct)
@@ -252,19 +253,63 @@ public sealed class SincronizarAgendaUseCase(
             if (porCodRef is not null) return porCodRef;
         }
 
-        if (!Cpf.TryCreate(beneficiario.Cpf, out var cpf) || cpf is null)
+        Cpf? cpf = null;
+        if (Cpf.TryCreate(beneficiario.Cpf, out var cpfValido) && cpfValido is not null)
+        {
+            cpf = cpfValido;
+
+            if (!pacientesDoDia.TryGetValue(cpf.Value, out var jaResolvido))
+            {
+                jaResolvido = await ResolverPorCpfAsync(cpf, ct);
+                pacientesDoDia[cpf.Value] = jaResolvido;
+            }
+
+            if (jaResolvido is not null) return jaResolvido;
+        }
+        else
         {
             logger.LogInformation(
-                "Agendamento da agenda sem CPF utilizável (codp {Codp}); ignorado no envio automático.",
+                "Agendamento da agenda sem CPF utilizável (codp {Codp}); tentando o celular da agenda.",
                 beneficiario.Codp);
+        }
+
+        return await ResolverPorCelularDaAgendaAsync(beneficiario, cpf, pacientesDoDia, ct);
+    }
+
+    /// <summary>
+    /// Sem CPF (ou com CPF que a Amplimed não conhece), o <c>celular</c> do beneficiário
+    /// na própria agenda basta para o WhatsApp. A identidade é telefone + nome: o mesmo
+    /// número pode ser de mãe e filhos. O paciente nasce sem CPF.
+    /// </summary>
+    private async Task<Paciente?> ResolverPorCelularDaAgendaAsync(
+        BeneficiarioDaAgenda beneficiario, Cpf? cpf, Dictionary<string, Paciente?> pacientesDoDia, CancellationToken ct)
+    {
+        var nome = beneficiario.Nome?.Trim();
+        if (string.IsNullOrWhiteSpace(nome)) return null;
+
+        if (!Telefone.TryCreate(beneficiario.Celular, out var telefone) || telefone is null)
+        {
+            logger.LogInformation(
+                "Paciente da agenda (codp {Codp}) sem celular válido; fica para a recepção.", beneficiario.Codp);
             return null;
         }
 
-        if (pacientesDoDia.TryGetValue(cpf.Value, out var jaResolvido)) return jaResolvido;
+        // Mesmo motivo do cache por CPF: o paciente novo ainda não está no banco.
+        var chave = $"tel:{telefone.Value}|{nome.ToLowerInvariant()}";
+        if (pacientesDoDia.TryGetValue(chave, out var jaResolvido)) return jaResolvido;
 
-        var resolvido = await ResolverPorCpfAsync(cpf, ct);
-        pacientesDoDia[cpf.Value] = resolvido;
-        return resolvido;
+        var paciente = await pacientes.ObterPorTelefoneENomeAsync(telefone.Value, nome, ct);
+
+        if (paciente is null)
+        {
+            // Se a agenda trouxe CPF válido, ele já foi procurado local e remotamente sem
+            // achar ninguém: guardá-lo agora não colide com o índice único.
+            paciente = new Paciente(nome, telefone, dataNascimento: null, cpf);
+            await pacientes.AdicionarAsync(paciente, ct);
+        }
+
+        pacientesDoDia[chave] = paciente;
+        return paciente;
     }
 
     private async Task<Paciente?> ResolverPorCpfAsync(Cpf cpf, CancellationToken ct)
@@ -272,7 +317,7 @@ public sealed class SincronizarAgendaUseCase(
         var local = await pacientes.ObterPorCpfAsync(cpf.Value, ct);
         if (local is not null) return local;
 
-        // A listagem da agenda não traz telefone: é preciso ir à API de Pacientes.
+        // Cadastro completo (celular atualizado, data de nascimento) vem da API de Pacientes.
         var remoto = await pacientesClient.BuscarPorCpfAsync(cpf.Value, ct);
 
         if (remoto is null)

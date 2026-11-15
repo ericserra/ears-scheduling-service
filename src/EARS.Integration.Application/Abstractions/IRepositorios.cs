@@ -25,6 +25,12 @@ public interface IPacienteRepository
     /// </summary>
     Task<Paciente?> ObterPorTelefoneAsync(string telefone, CancellationToken ct = default);
 
+    /// <summary>
+    /// Telefone + nome: o par que identifica quem chegou pela agenda sem CPF. Só o
+    /// telefone não basta — mãe e filhos costumam compartilhar o mesmo número.
+    /// </summary>
+    Task<Paciente?> ObterPorTelefoneENomeAsync(string telefone, string nome, CancellationToken ct = default);
+
     Task AdicionarAsync(Paciente paciente, CancellationToken ct = default);
 }
 

@@ -33,6 +33,16 @@ public sealed class PacienteRepository(AppDbContext db) : IPacienteRepository
             .OrderByDescending(p => p.AtualizadoEm)
             .FirstOrDefaultAsync(ct);
 
+    public Task<Paciente?> ObterPorTelefoneENomeAsync(string telefone, string nome, CancellationToken ct = default)
+    {
+        var alvo = nome.Trim().ToLower();
+
+        return db.Pacientes
+            .Where(p => p.Telefone == telefone && p.Nome.ToLower() == alvo)
+            .OrderBy(p => p.CriadoEm)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AdicionarAsync(Paciente paciente, CancellationToken ct = default) =>
         await db.Pacientes.AddAsync(paciente, ct);
 }

@@ -168,9 +168,11 @@ Os endpoints `/admin` exigem o cabeçalho `X-Api-Key`.
 - **O `codReferencia` é cunhado por nós e nunca reaproveitado.** Reusar o valor
   para pacientes diferentes mescla cadastros silenciosamente; por isso ele é
   derivado do Guid local (`ears-{guid}`).
-- **A listagem da agenda não devolve telefone.** Para avisar quem chegou pela
-  agenda da clínica é preciso buscar o celular por CPF na API de Pacientes. Sem CPF
-  ou sem celular, o agendamento fica para a recepção, com registro em log.
+- **A listagem da agenda devolve o `celular` do beneficiário** (campo ausente da
+  documentação e do exemplo oficial, mas presente no body real), porém o CPF vem
+  nulo com frequência. Com CPF, o celular é buscado na API de Pacientes; sem CPF,
+  usa-se o `celular` da agenda e o paciente é identificado por telefone + nome.
+  Só sem celular válido o agendamento fica para a recepção, com registro em log.
 - **Marcar exige o `idHorario`**, um token opaco de `listar-horarios` — não data e
   hora. A revalidação antes de gravar compara o token, não o horário.
 - **Datas da Amplimed vêm sem fuso.** São hora da clínica; lidas como UTC, o

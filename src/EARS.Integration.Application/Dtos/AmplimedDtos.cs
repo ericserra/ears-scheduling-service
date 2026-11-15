@@ -75,15 +75,17 @@ public sealed record ProfissionalDaAgenda(
     string? UfConselho);
 
 /// <summary>
-/// Paciente como aparece na listagem da agenda. Note a ausência de telefone:
-/// para enviar WhatsApp é preciso buscar o celular na API de Pacientes por CPF.
+/// Paciente como aparece na listagem da agenda. O <c>celular</c> vem no body
+/// real da Amplimed (não consta na documentação nem no exemplo), mas o CPF
+/// frequentemente vem nulo: sem CPF, é o celular que permite avisar o paciente.
 /// </summary>
 public sealed record BeneficiarioDaAgenda(
     long? Codp,
     string? CodRef,
     string? Cpf,
     string? Nome,
-    string? NumeroCarteira);
+    string? NumeroCarteira,
+    string? Celular = null);
 
 /// <summary>Agendamento da clínica, achatado a partir da resposta aninhada por profissional.</summary>
 public sealed record AgendamentoDaAgenda(

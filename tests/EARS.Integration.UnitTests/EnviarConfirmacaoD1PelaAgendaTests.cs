@@ -86,11 +86,11 @@ public class EnviarConfirmacaoD1PelaAgendaTests
 
     private static AgendamentoDaAgenda ItemDaAgenda(
         long id, StatusAmplimed? status, string? texto = null, string? cpf = null,
-        string? nome = "Maria Souza") => new(
+        string? nome = "Maria Souza", string? celular = null) => new(
         Usuclin, id, new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero), 30,
         status, texto ?? status?.ToString(), null, null, null,
         new ProfissionalDaAgenda("Dra. Inesângela", null, null, null, null),
-        new BeneficiarioDaAgenda(null, null, cpf, nome, null));
+        new BeneficiarioDaAgenda(null, null, cpf, nome, null, celular));
 
     /// <summary>Monta o dia: o que a agenda devolve e o espelho local correspondente.</summary>
     private void Dia16(IReadOnlyList<AgendamentoDaAgenda> daAgenda, params Agendamento[] espelho)
@@ -299,7 +299,100 @@ public class EnviarConfirmacaoD1PelaAgendaTests
         // Só a consulta 1 precisa de gente: a 2 não tem paciente e a 3 já está confirmada.
         var contato = resultado.PrecisamContatoManual.Should().ContainSingle().Subject;
         contato.Paciente.Should().Be("Maria Souza");
-        contato.Motivo.Should().Contain("sem CPF");
+        contato.Motivo.Should().Contain("sem CPF").And.Contain("celular");
+    }
+
+    [Fact]
+    public async Task PacienteSemCpfMasComCelularNaAgendaRecebeOTemplate()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null, nome: "Inacio Varela Madeira", celular: "51996945645"),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+        Paciente? criado = null;
+        await _pacientes.AdicionarAsync(Arg.Do<Paciente>(p => criado = p), Arg.Any<CancellationToken>());
+
+        var resultado = await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        criado.Should().NotBeNull();
+        criado!.Telefone.Should().Be("5551996945645");
+        criado.Cpf.Should().BeNull();
+        await _agendamentos.Received(1).AdicionarAsync(Arg.Any<Agendamento>(), Arg.Any<CancellationToken>());
+        resultado.PrecisamContatoManual.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CelularDaAgendaSemNomeOuInvalidoContinuaParaARecepcao()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null, nome: "Sem Telefone", celular: null),
+            ItemDaAgenda(2, StatusAmplimed.Agendado, cpf: null, nome: "Telefone Torto", celular: "12345"),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+
+        var resultado = await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        resultado.PrecisamContatoManual.Select(c => c.Paciente)
+            .Should().BeEquivalentTo("Sem Telefone", "Telefone Torto");
+        await _pacientes.DidNotReceive().AdicionarAsync(Arg.Any<Paciente>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MesmoPacienteComDuasConsultasNoDiaCriaUmSoPacienteSemCpf()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null, nome: "Aires", celular: "51996945645"),
+            ItemDaAgenda(2, StatusAmplimed.Agendado, cpf: null, nome: "AIRES ", celular: "(51) 99694-5645"),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+
+        await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        await _pacientes.Received(1).AdicionarAsync(Arg.Any<Paciente>(), Arg.Any<CancellationToken>());
+        await _agendamentos.Received(2).AdicionarAsync(Arg.Any<Agendamento>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PacienteSemCpfJaConhecidoPorTelefoneENomeNaoEhDuplicado()
+    {
+        var existente = new Paciente("Inacio Varela Madeira", Telefone.Create("51996945645"));
+        _pacientes.ObterPorTelefoneENomeAsync("5551996945645", "Inacio Varela Madeira", Arg.Any<CancellationToken>())
+            .Returns(existente);
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null, nome: "Inacio Varela Madeira", celular: "51996945645"),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+
+        await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        await _pacientes.DidNotReceive().AdicionarAsync(Arg.Any<Paciente>(), Arg.Any<CancellationToken>());
+        await _agendamentos.Received(1).AdicionarAsync(
+            Arg.Is<Agendamento>(a => a.PacienteId == existente.Id), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CpfSemCadastroNaAmplimedCaiNoCelularDaAgenda()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: "52998224725", nome: "Maria Souza", celular: "51988887777"),
+        });
+        _pacientesClient.BuscarPorCpfAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((PacienteAmplimed?)null);
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+        Paciente? criado = null;
+        await _pacientes.AdicionarAsync(Arg.Do<Paciente>(p => criado = p), Arg.Any<CancellationToken>());
+
+        var resultado = await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        criado.Should().NotBeNull();
+        criado!.Telefone.Should().Be("5551988887777");
+        criado.Cpf.Should().Be("52998224725");
+        resultado.PrecisamContatoManual.Should().BeEmpty();
     }
 
     private void AgendaComUmPacienteSemCpf()

@@ -35,11 +35,17 @@ Três consequências do formato real da API entraram no desenho:
    agendamentos e mudanças de status, o integrador consulta periodicamente. Daí o
    `SincronizacaoAgendaJob`, com cron e janela de dias configuráveis.
 
-2. **A listagem da agenda não devolve telefone.** O `beneficiario` traz codp,
-   codRef, CPF, nome e carteirinha, mas nenhum contato. Para enviar WhatsApp a um
-   paciente que chegou pela agenda é preciso uma segunda chamada, à API de
-   Pacientes, buscando o celular por CPF. Sem CPF ou sem celular, o agendamento é
-   ignorado no envio automático e registrado em log — vira tarefa da recepção.
+2. **O telefone vem na agenda, mas o CPF muitas vezes não.** O `beneficiario`
+   traz codp, codRef, CPF, nome, carteirinha e `celular` (campo ausente da
+   documentação e do exemplo oficial; confirmado no body real). Com CPF, o celular
+   cadastrado é buscado na API de Pacientes; sem CPF (ou se a Amplimed não o
+   conhece), usa-se o `celular` da própria agenda, e o paciente é identificado por
+   telefone + nome, já que o número pode ser compartilhado por mãe e filhos. Sem
+   celular válido, o agendamento é ignorado no envio automático e registrado em
+   log — vira tarefa da recepção.
+
+   _Correção:_ uma versão anterior deste ADR afirmava que a listagem não trazia
+   telefone; baseava-se só na documentação.
 
 3. **O espelho local segue sendo o modelo de leitura.** O disparo D-1 e o
    lembrete leem o banco local; o polling é o que o mantém fiel à agenda. Falha

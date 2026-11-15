@@ -47,7 +47,8 @@ internal sealed record BeneficiarioJson(
     [property: JsonPropertyName("codRef")] string? CodRef,
     [property: JsonPropertyName("cpf")] string? Cpf,
     [property: JsonPropertyName("nr_carteira")] string? NrCarteira,
-    [property: JsonPropertyName("nome")] string? Nome);
+    [property: JsonPropertyName("nome")] string? Nome,
+    [property: JsonPropertyName("celular")] string? Celular);
 
 internal sealed record AgendamentoDaAgendaJson(
     [property: JsonPropertyName("usuclin")] string? Usuclin,

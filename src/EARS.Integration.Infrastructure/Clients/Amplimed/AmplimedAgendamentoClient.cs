@@ -196,7 +196,7 @@ public sealed class AmplimedAgendamentoClient : IAmplimedAgendamentoClient
                     a.Convenio,
                     a.Unidade,
                     dadosProfissional,
-                    new BeneficiarioDaAgenda(b?.Codp, b?.CodRef, b?.Cpf, b?.Nome, b?.NrCarteira)));
+                    new BeneficiarioDaAgenda(b?.Codp, b?.CodRef, b?.Cpf, b?.Nome, b?.NrCarteira, b?.Celular)));
             }
         }
 
