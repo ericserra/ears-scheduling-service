@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Dtos;
 using EARS.Integration.Application.Options;
@@ -24,6 +25,15 @@ public sealed class AmplimedAgendamentoClient : IAmplimedAgendamentoClient
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>
+    /// O <c>cadastrar-agendamento</c> valida o corpo com rigor ("Invalid params"): campo
+    /// opcional sem valor tem de ser <em>omitido</em>, não mandado como <c>null</c>.
+    /// </summary>
+    private static readonly JsonSerializerOptions JsonSemNulos = new(Json)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     /// <summary>Status que indicam ausência do recurso, não falha de chamada.</summary>
@@ -314,13 +324,20 @@ public sealed class AmplimedAgendamentoClient : IAmplimedAgendamentoClient
             request.Uf,
             request.Observacoes);
 
-        var resposta = await _http.PostAsJsonAsync($"{Raiz}/cadastrar-agendamento", corpo, Json, ct);
+        var resposta = await _http.PostAsJsonAsync($"{Raiz}/cadastrar-agendamento", corpo, JsonSemNulos, ct);
 
         if (!resposta.IsSuccessStatusCode)
         {
             var erro = await resposta.Content.ReadAsStringAsync(ct);
+
+            // Só os NOMES dos campos enviados, nunca os valores: a Amplimed responde só
+            // "Invalid params", e sem isso não há como saber o que ela recusou.
+            var campos = string.Join(", ", JsonSerializer.SerializeToElement(corpo, JsonSemNulos)
+                .EnumerateObject().Select(p => p.Name));
+
             throw new AmplimedException(
-                $"cadastrar-agendamento falhou ({(int)resposta.StatusCode}): {erro}", resposta.StatusCode);
+                $"cadastrar-agendamento falhou ({(int)resposta.StatusCode}): {erro} [campos enviados: {campos}]",
+                resposta.StatusCode);
         }
 
         var criado = await resposta.Content.ReadFromJsonAsync<AgendamentoCriadoJson>(Json, ct);

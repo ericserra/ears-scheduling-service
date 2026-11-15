@@ -143,6 +143,40 @@ public class AmplimedAgendamentoClientTests
     }
 
     [Fact]
+    public async Task CadastrarOmiteCamposOpcionaisSemValorEmVezDeMandarNull()
+    {
+        var fake = new HttpFake().Responder(PayloadsDaDocumentacao.CadastrarAgendamento);
+
+        await Criar(fake).CadastrarAsync(new CadastrarAgendamentoRequest(
+            IdUnico: "ears-abc",
+            IdHorario: "slot-1",
+            Cpf: null,
+            Nome: "Paciente Sem Cpf",
+            DataNascimento: new DateOnly(2000, 6, 29),
+            Celular: "5516997598594"));
+
+        var corpo = fake.Corpos[0];
+        corpo.Should().NotContain("null", "a Amplimed responde 400 Invalid params a campo opcional nulo");
+        corpo.Should().NotContain("\"cpf\"")
+            .And.Contain("\"idUnico\":\"ears-abc\"")
+            .And.Contain("\"celular\":\"16997598594\"");
+    }
+
+    [Fact]
+    public async Task CadastrarRecusadoListaOsNomesDosCamposEnviadosSemOsValores()
+    {
+        var fake = new HttpFake().Responder("{\"message\":\"Invalid params\"}", HttpStatusCode.BadRequest);
+
+        var acao = () => Criar(fake).CadastrarAsync(new CadastrarAgendamentoRequest(
+            "ears-abc", "slot-1", null, "Fulano Secreto", new DateOnly(2000, 6, 29), "5516997598594"));
+
+        var erro = (await acao.Should().ThrowAsync<AmplimedException>()).Which;
+        erro.Message.Should().Contain("Invalid params")
+            .And.Contain("campos enviados: idUnico, idHorario, nome, dataNascimento, celular")
+            .And.NotContain("Fulano Secreto");
+    }
+
+    [Fact]
     public async Task AlterarStatusEnviaOStatusCodeNumerico()
     {
         var fake = new HttpFake().Responder(PayloadsDaDocumentacao.AlterarStatus);
