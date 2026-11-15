@@ -28,6 +28,8 @@ namespace EARS.Integration.Application.UseCases;
 /// </remarks>
 public sealed class ProcessarRespostaConfirmacaoUseCase(
     IAgendamentoRepository agendamentos,
+    IConversaRepository conversas,
+    IRelogio relogio,
     IAmplimedAgendamentoClient agendamentoClient,
     ISleekFlowClient sleekFlow,
     IMensagemLogRepository logs,
@@ -45,7 +47,28 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
             .ObterAtivoMaisRecentePorTelefoneAsync(mensagem.Telefone, ct);
 
         if (agendamento is null || agendamento.ConfirmacaoEnviadaEm is null)
-            return false; // não é resposta de confirmação; segue para o fluxo de agendamento
+        {
+            // Ninguém mandou o template, mas o paciente escreveu "confirmar" (por
+            // exemplo, respondendo a um lembrete que a clínica mandou por fora).
+            // Só o confirmar explícito vale: "sim" e "1" são ambíguos fora do template.
+            if (!ConfirmacaoExplicita(mensagem)) return false;
+
+            // Em meio a um agendamento pelo bot, "confirmar" é a resposta ao
+            // resumo do horário, e quem trata isso é o diálogo.
+            if (await conversas.ObterAtivaPorTelefoneAsync(mensagem.Telefone, ct) is not null)
+                return false;
+
+            var ativos = await agendamentos.ListarAtivosFuturosPorTelefoneAsync(
+                mensagem.Telefone, relogio.AgoraUtc, 2, ct);
+
+            if (ativos.Count != 1)
+            {
+                await EncaminharConfirmacaoSemAlvoAsync(mensagem, ativos.Count, ct);
+                return true;
+            }
+
+            agendamento = ativos[0];
+        }
 
         var resposta = Interpretar(mensagem);
 
@@ -103,6 +126,36 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
 
         await uow.SalvarAsync(ct);
         return true;
+    }
+
+    /// <summary>
+    /// Confirmação que o sistema não consegue aplicar sozinho: nenhuma consulta
+    /// futura neste número (cadastro sem CPF ou celular na Amplimed, por exemplo)
+    /// ou mais de uma. Quem decide é a recepção, e o paciente não fica sem resposta.
+    /// </summary>
+    private async Task EncaminharConfirmacaoSemAlvoAsync(
+        MensagemRecebida mensagem, int consultasEncontradas, CancellationToken ct)
+    {
+        var nota = consultasEncontradas == 0
+            ? "CONFIRMAÇÃO — o paciente respondeu \"confirmar\", mas não há consulta futura vinculada a este número " +
+              "no sistema (possível cadastro sem CPF ou celular na Amplimed). Confirmar manualmente na agenda."
+            : "CONFIRMAÇÃO — o paciente respondeu \"confirmar\" e há mais de uma consulta futura neste número. " +
+              "Confirmar manualmente, indicando qual.";
+
+        logger.LogInformation(
+            "Confirmação de {Telefone} sem alvo único ({Consultas} consulta(s)); encaminhada à recepção.",
+            mensagem.Telefone, consultasEncontradas);
+
+        await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
+            "Recebi sua confirmação! Nossa equipe vai conferir sua consulta e confirmar com você por aqui.", ct);
+        await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone, nota, ct);
+
+        await logs.AdicionarAsync(new MensagemLog(
+            mensagem.Telefone, TipoMensagem.Recebida, null,
+            mensagem.BotaoPayload ?? mensagem.Texto ?? string.Empty,
+            null, sucesso: true), ct);
+
+        await uow.SalvarAsync(ct);
     }
 
     /// <summary>
@@ -198,6 +251,15 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
 
     private Task EnfileirarAsync(string tipo, object payload, CancellationToken ct) =>
         outbox.AdicionarAsync(new OutboxMessage(tipo, JsonSerializer.Serialize(payload)), ct);
+
+    private static bool ConfirmacaoExplicita(MensagemRecebida mensagem)
+    {
+        if (!string.IsNullOrWhiteSpace(mensagem.BotaoPayload))
+            return mensagem.BotaoPayload.Trim().Equals("confirmar", StringComparison.OrdinalIgnoreCase);
+
+        var texto = (mensagem.Texto ?? string.Empty).Trim().ToLowerInvariant();
+        return texto is "confirmar" or "confirmo" or "confirmado";
+    }
 
     /// <summary>
     /// O botão é a fonte confiável. Texto livre só é aceito quando inequívoco;

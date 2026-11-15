@@ -100,6 +100,18 @@ public sealed class AgendamentoRepository(AppDbContext db, IRelogio relogio) : I
             .ThenByDescending(a => a.InicioEm)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<IReadOnlyList<Agendamento>> ListarAtivosFuturosPorTelefoneAsync(
+        string telefone, DateTimeOffset aPartirDe, int maximo, CancellationToken ct = default) =>
+        await db.Agendamentos
+            .Include(a => a.Paciente)
+            .Where(a => a.Paciente != null
+                        && a.Paciente.Telefone == telefone
+                        && (a.Status == StatusAgendamento.Agendado || a.Status == StatusAgendamento.NaoConfirmado)
+                        && a.InicioEm >= aPartirDe)
+            .OrderBy(a => a.InicioEm)
+            .Take(maximo)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Agendamento>> ListarComEtiquetaDeConfirmacaoAsync(
         DateTimeOffset enviadosAntesDe, int maximo, CancellationToken ct = default) =>
         await db.Agendamentos

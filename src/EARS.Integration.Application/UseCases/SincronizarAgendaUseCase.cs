@@ -43,7 +43,7 @@ public sealed record ResultadoSincronizacao(
 /// <param name="Horario">Dia e hora no fuso da clínica.</param>
 /// <param name="StatusNaAgenda">Rótulo de status como a Amplimed devolveu.</param>
 public sealed record DescartadoDaAgenda(
-    string Chave, string? Paciente, string Profissional, string Horario,
+    string Chave, string? Paciente, long? Codp, string Profissional, string Horario,
     string? StatusNaAgenda, string Motivo);
 
 /// <summary>
@@ -216,6 +216,7 @@ public sealed class SincronizarAgendaUseCase(
     private DescartadoDaAgenda Descartado(AgendamentoDaAgenda item, DateTimeOffset inicioUtc, string motivo) => new(
         ResultadoSincronizacao.Chave(item.Usuclin, item.IdAgendamento),
         item.Beneficiario.Nome,
+        item.Beneficiario.Codp,
         item.Profissional.Nome,
         relogio.ParaLocal(inicioUtc).ToString("dd/MM HH:mm"),
         item.StatusTexto ?? item.Status?.ToString(),

@@ -54,6 +54,14 @@ public interface IAgendamentoRepository
     Task<Agendamento?> ObterAtivoMaisRecentePorTelefoneAsync(string telefone, CancellationToken ct = default);
 
     /// <summary>
+    /// Consultas futuras do telefone ainda por confirmar (Agendado ou NaoConfirmado),
+    /// da mais próxima para a mais distante. Serve para decidir se um "confirmar"
+    /// sem template tem um alvo único.
+    /// </summary>
+    Task<IReadOnlyList<Agendamento>> ListarAtivosFuturosPorTelefoneAsync(
+        string telefone, DateTimeOffset aPartirDe, int maximo, CancellationToken ct = default);
+
+    /// <summary>
     /// Agendamentos cuja etiqueta da confirmação D-1 segue no contato e cujo
     /// envio é anterior ao limite. Base da liberação do menu para quem nunca
     /// respondeu ao template.
