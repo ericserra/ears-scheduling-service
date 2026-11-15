@@ -16,7 +16,8 @@ public sealed record ResultadoSincronizacao(
     int IgnoradosSemCpf,
     int IgnoradosSemTelefone,
     int IgnoradosStatusDesconhecido = 0,
-    IReadOnlySet<string>? AgendadosNaAgenda = null)
+    IReadOnlySet<string>? AgendadosNaAgenda = null,
+    IReadOnlyList<DescartadoDaAgenda>? Descartados = null)
 {
     public static ResultadoSincronizacao Vazio => new(0, 0, 0, 0, 0, 0);
 
@@ -34,6 +35,16 @@ public sealed record ResultadoSincronizacao(
         IgnoradosSemTelefone + outro.IgnoradosSemTelefone,
         IgnoradosStatusDesconhecido + outro.IgnoradosStatusDesconhecido);
 }
+
+/// <summary>
+/// Consulta da agenda que ficou de fora do espelho, e por quê. Existe para a
+/// recepção saber quem corrigir na Amplimed (CPF, celular) antes do disparo.
+/// </summary>
+/// <param name="Horario">Dia e hora no fuso da clínica.</param>
+/// <param name="StatusNaAgenda">Rótulo de status como a Amplimed devolveu.</param>
+public sealed record DescartadoDaAgenda(
+    string Chave, string? Paciente, string Profissional, string Horario,
+    string? StatusNaAgenda, string Motivo);
 
 /// <summary>
 /// Polling da agenda da clínica — o cenário A da Cláusula 3ª.
@@ -113,6 +124,7 @@ public sealed class SincronizarAgendaUseCase(
 
         int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0, statusDesconhecido = 0;
         var agendados = new HashSet<string>();
+        var descartados = new List<DescartadoDaAgenda>();
 
         // O paciente novo só vai ao banco no SalvarAsync do fim. Sem este cache, o
         // segundo agendamento do mesmo CPF no dia não o encontraria na consulta e
@@ -136,6 +148,7 @@ public sealed class SincronizarAgendaUseCase(
                     "Agendamento {Usuclin}:{Id} com status desconhecido \"{Texto}\"; ignorado.",
                     item.Usuclin, item.IdAgendamento, item.StatusTexto ?? "(vazio)");
                 statusDesconhecido++;
+                descartados.Add(Descartado(item, inicio, $"status desconhecido: \"{item.StatusTexto ?? "(vazio)"}\""));
                 continue;
             }
 
@@ -161,6 +174,11 @@ public sealed class SincronizarAgendaUseCase(
             {
                 if (string.IsNullOrWhiteSpace(item.Beneficiario.Cpf)) semCpf++;
                 else semTelefone++;
+
+                descartados.Add(Descartado(item, inicio,
+                    string.IsNullOrWhiteSpace(item.Beneficiario.Cpf)
+                        ? "paciente sem CPF no cadastro"
+                        : "CPF sem cadastro na API de Pacientes ou sem celular válido"));
                 continue;
             }
 
@@ -191,8 +209,17 @@ public sealed class SincronizarAgendaUseCase(
 
         return new ResultadoSincronizacao(
             daAgenda.Count, criados, conciliados, vinculados, semCpf, semTelefone,
-            statusDesconhecido, agendados);
+            statusDesconhecido, agendados,
+            descartados.OrderBy(d => d.Horario, StringComparer.Ordinal).ToList());
     }
+
+    private DescartadoDaAgenda Descartado(AgendamentoDaAgenda item, DateTimeOffset inicioUtc, string motivo) => new(
+        ResultadoSincronizacao.Chave(item.Usuclin, item.IdAgendamento),
+        item.Beneficiario.Nome,
+        item.Profissional.Nome,
+        relogio.ParaLocal(inicioUtc).ToString("dd/MM HH:mm"),
+        item.StatusTexto ?? item.Status?.ToString(),
+        motivo);
 
     /// <summary>
     /// Resolve o paciente da agenda no espelho local, buscando o celular na API
