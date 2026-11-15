@@ -79,11 +79,12 @@ public class EnviarConfirmacaoD1PelaAgendaTests
     }
 
     private static AgendamentoDaAgenda ItemDaAgenda(
-        long id, StatusAmplimed? status, string? texto = null, string? cpf = null) => new(
+        long id, StatusAmplimed? status, string? texto = null, string? cpf = null,
+        string? nome = "Maria Souza") => new(
         Usuclin, id, new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero), 30,
         status, texto ?? status?.ToString(), null, null, null,
         new ProfissionalDaAgenda("Dra. Inesângela", null, null, null, null),
-        new BeneficiarioDaAgenda(null, null, cpf, "Maria Souza", null));
+        new BeneficiarioDaAgenda(null, null, cpf, nome, null));
 
     /// <summary>Monta o dia: o que a agenda devolve e o espelho local correspondente.</summary>
     private void Dia16(IReadOnlyList<AgendamentoDaAgenda> daAgenda, params Agendamento[] espelho)
@@ -274,5 +275,24 @@ public class EnviarConfirmacaoD1PelaAgendaTests
 
         await _pacientes.Received(1).AdicionarAsync(Arg.Any<Paciente>(), Arg.Any<CancellationToken>());
         await _agendamentos.Received(2).AdicionarAsync(Arg.Any<Agendamento>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PacienteSemCpfAindaAgendadoApareceParaContatoManualMasEventoSemPacienteNao()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null),
+            ItemDaAgenda(2, StatusAmplimed.Agendado, cpf: null, nome: null),
+            ItemDaAgenda(3, StatusAmplimed.Confirmado, cpf: null),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+
+        var resultado = await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        // Só a consulta 1 precisa de gente: a 2 não tem paciente e a 3 já está confirmada.
+        var contato = resultado.PrecisamContatoManual.Should().ContainSingle().Subject;
+        contato.Paciente.Should().Be("Maria Souza");
+        contato.Motivo.Should().Contain("sem CPF");
     }
 }

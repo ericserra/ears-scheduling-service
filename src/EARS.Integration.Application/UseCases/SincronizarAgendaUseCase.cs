@@ -17,7 +17,8 @@ public sealed record ResultadoSincronizacao(
     int IgnoradosSemTelefone,
     int IgnoradosStatusDesconhecido = 0,
     IReadOnlySet<string>? AgendadosNaAgenda = null,
-    IReadOnlyList<DescartadoDaAgenda>? Descartados = null)
+    IReadOnlyList<DescartadoDaAgenda>? Descartados = null,
+    int IgnoradosSemPaciente = 0)
 {
     public static ResultadoSincronizacao Vazio => new(0, 0, 0, 0, 0, 0);
 
@@ -122,7 +123,8 @@ public sealed class SincronizarAgendaUseCase(
     {
         var daAgenda = await agendamentoClient.ListarAgendaCompletaDoDiaAsync(dia, ct);
 
-        int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0, statusDesconhecido = 0;
+        int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0, statusDesconhecido = 0,
+            semPaciente = 0;
         var agendados = new HashSet<string>();
         var descartados = new List<DescartadoDaAgenda>();
 
@@ -172,6 +174,17 @@ public sealed class SincronizarAgendaUseCase(
 
             if (paciente is null)
             {
+                // Consulta sem nome nem CPF não tem paciente: é evento ou reserva marcada
+                // como agendamento. Não há a quem avisar, e contá-la como "sem CPF" só
+                // esconderia os pacientes reais que a recepção precisa corrigir.
+                if (string.IsNullOrWhiteSpace(item.Beneficiario.Nome)
+                    && string.IsNullOrWhiteSpace(item.Beneficiario.Cpf))
+                {
+                    semPaciente++;
+                    descartados.Add(Descartado(item, inicio, "consulta sem paciente vinculado"));
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(item.Beneficiario.Cpf)) semCpf++;
                 else semTelefone++;
 
@@ -210,7 +223,8 @@ public sealed class SincronizarAgendaUseCase(
         return new ResultadoSincronizacao(
             daAgenda.Count, criados, conciliados, vinculados, semCpf, semTelefone,
             statusDesconhecido, agendados,
-            descartados.OrderBy(d => d.Horario, StringComparer.Ordinal).ToList());
+            descartados.OrderBy(d => d.Horario, StringComparer.Ordinal).ToList(),
+            semPaciente);
     }
 
     private DescartadoDaAgenda Descartado(AgendamentoDaAgenda item, DateTimeOffset inicioUtc, string motivo) => new(

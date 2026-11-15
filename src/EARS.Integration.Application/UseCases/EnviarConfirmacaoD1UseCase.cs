@@ -43,7 +43,7 @@ public sealed class EnviarConfirmacaoD1UseCase(
     public async Task<ResultadoDisparo> ExecutarParaDiaAsync(
         DateOnly dia, OpcoesDisparo opcoes, CancellationToken ct = default)
     {
-        var (alvos, agendadosNaAgenda) = await ObterAgendamentosAsync(dia, opcoes.ValidarNaAgenda, ct);
+        var (alvos, agendadosNaAgenda, descartados) = await ObterAgendamentosAsync(dia, opcoes.ValidarNaAgenda, ct);
         var itens = new List<ItemDisparo>();
         var enviados = 0;
 
@@ -156,7 +156,14 @@ public sealed class EnviarConfirmacaoD1UseCase(
             "Confirmação D-1 de {Dia} concluída: {Enviados} enviados de {Total} agendamentos{Simulacao}.",
             dia, enviados, alvos.Count, opcoes.Simular ? " (simulação)" : "");
 
-        return new ResultadoDisparo(dia, opcoes.Simular, alvos.Count, enviados, itens);
+        // Quem a agenda ainda mostra como Agendado mas não tem como receber a mensagem
+        // (paciente sem CPF ou sem celular na Amplimed): a recepção confirma à mão.
+        var contatoManual = (descartados ?? Array.Empty<DescartadoDaAgenda>())
+            .Where(d => !string.IsNullOrWhiteSpace(d.Paciente)
+                        && MapaStatus.DeTexto(d.StatusNaAgenda) == StatusAmplimed.Agendado)
+            .ToList();
+
+        return new ResultadoDisparo(dia, opcoes.Simular, alvos.Count, enviados, itens, contatoManual);
     }
 
     /// <summary>
@@ -169,10 +176,12 @@ public sealed class EnviarConfirmacaoD1UseCase(
     /// <see cref="OpcoesDisparo.ValidarNaAgenda"/> não há degradação: a decisão é
     /// o status da agenda, então sem leitura fresca nada sai.
     /// </summary>
-    private async Task<(IReadOnlyList<Agendamento> Alvos, IReadOnlySet<string>? Agendados)> ObterAgendamentosAsync(
+    private async Task<(IReadOnlyList<Agendamento> Alvos, IReadOnlySet<string>? Agendados,
+        IReadOnlyList<DescartadoDaAgenda>? Descartados)> ObterAgendamentosAsync(
         DateOnly dia, bool exigirAgenda, CancellationToken ct)
     {
         IReadOnlySet<string>? agendados = null;
+        IReadOnlyList<DescartadoDaAgenda>? descartados = null;
 
         if (exigirAgenda && !_opcoes.LeituraAgendaViaApi)
             throw new AgendaIndisponivelException(
@@ -185,6 +194,7 @@ public sealed class EnviarConfirmacaoD1UseCase(
             {
                 var resultado = await sincronizarAgenda.ExecutarParaDiaAsync(dia, ct);
                 agendados = resultado.AgendadosNaAgenda;
+                descartados = resultado.Descartados;
                 logger.LogInformation(
                     "Cenário A: agenda de {Dia} conciliada ({Lidos} lidos, {Criados} novos, " +
                     "{Desconhecidos} com status desconhecido).",
@@ -197,7 +207,7 @@ public sealed class EnviarConfirmacaoD1UseCase(
             }
         }
 
-        return (await agendamentos.ListarPorDiaAsync(dia, ct), agendados);
+        return (await agendamentos.ListarPorDiaAsync(dia, ct), agendados, descartados);
     }
 
     /// <summary>
@@ -277,9 +287,14 @@ public sealed record ItemDisparo(
     DateTimeOffset InicioEm,
     string Situacao);
 
+/// <param name="PrecisamContatoManual">
+/// Consultas que a agenda mostra como Agendado, de paciente com nome, mas que o
+/// sistema não consegue avisar: sem CPF ou sem celular na Amplimed.
+/// </param>
 public sealed record ResultadoDisparo(
     DateOnly Dia,
     bool Simulacao,
     int AgendamentosNoDia,
     int Enviados,
-    IReadOnlyList<ItemDisparo> Itens);
+    IReadOnlyList<ItemDisparo> Itens,
+    IReadOnlyList<DescartadoDaAgenda>? PrecisamContatoManual = null);
