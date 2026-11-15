@@ -46,9 +46,15 @@ public class EnviarConfirmacaoD1PelaAgendaTests
             .Returns(true);
     }
 
-    private EnviarConfirmacaoD1UseCase Criar(bool leituraViaApi = true)
+    private const string Recepcao = "5551977776666";
+
+    private EnviarConfirmacaoD1UseCase Criar(bool leituraViaApi = true, string telefoneRecepcao = "")
     {
-        var opcoes = Options.Create(new AutomacaoOptions { LeituraAgendaViaApi = leituraViaApi });
+        var opcoes = Options.Create(new AutomacaoOptions
+        {
+            LeituraAgendaViaApi = leituraViaApi,
+            TelefoneAvisoRecepcao = telefoneRecepcao,
+        });
         var prontidao = Substitute.For<IProntidaoIntegracao>();
         prontidao.AmplimedConfigurada.Returns(true);
 
@@ -294,5 +300,56 @@ public class EnviarConfirmacaoD1PelaAgendaTests
         var contato = resultado.PrecisamContatoManual.Should().ContainSingle().Subject;
         contato.Paciente.Should().Be("Maria Souza");
         contato.Motivo.Should().Contain("sem CPF");
+    }
+
+    private void AgendaComUmPacienteSemCpf()
+    {
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: null, nome: "Inacio Varela Madeira"),
+        });
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+    }
+
+    [Fact]
+    public async Task DisparoRealAvisaARecepcaoDeQuemPrecisaDeContatoManual()
+    {
+        AgendaComUmPacienteSemCpf();
+
+        await Criar(telefoneRecepcao: Recepcao).ExecutarParaDiaAsync(Dia, Geral);
+
+        await _sleekFlow.Received(1).EnviarTemplateAsync(
+            Arg.Is<EnvioTemplateRequest>(r =>
+                r.Telefone == Recepcao
+                && r.TemplateNome == "ears_aviso_recepcao"
+                && r.Variaveis.Any(v => v.Nome == "quantidade" && v.Valor == "1")
+                && r.Variaveis.Any(v => v.Nome == "lista" && v.Valor.Contains("Inacio Varela Madeira"))),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SimulacaoETesteFiltradoNaoAvisamARecepcao()
+    {
+        AgendaComUmPacienteSemCpf();
+        var uso = Criar(telefoneRecepcao: Recepcao);
+
+        await uso.ExecutarParaDiaAsync(Dia, Geral with { Simular = true });
+        await uso.ExecutarParaDiaAsync(Dia, Geral with { Telefones = new HashSet<string> { "5551988887777" } });
+        await uso.ExecutarParaDiaAsync(Dia, Geral with { AvisarRecepcao = false });
+
+        await _sleekFlow.DidNotReceive().EnviarTemplateAsync(
+            Arg.Any<EnvioTemplateRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SemTelefoneDaRecepcaoConfiguradoNaoQuebraODisparo()
+    {
+        AgendaComUmPacienteSemCpf();
+
+        var resultado = await Criar(telefoneRecepcao: "").ExecutarParaDiaAsync(Dia, Geral);
+
+        resultado.PrecisamContatoManual.Should().ContainSingle();
+        await _sleekFlow.DidNotReceive().EnviarTemplateAsync(
+            Arg.Any<EnvioTemplateRequest>(), Arg.Any<CancellationToken>());
     }
 }

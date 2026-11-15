@@ -114,4 +114,6 @@ dias_sincronizacao_agenda = 2
 #   "Automacao__CronConfirmacao"   = "0 0 17 * * ?"
 #   "Automacao__CronLembrete"      = "0 30 7 * * ?"
 #   "Automacao__MaxHorariosOfertados" = "5"
+#   # Celular da recepção: recebe o aviso das consultas que o D-1 não confirma sozinho.
+#   "Automacao__TelefoneAvisoRecepcao" = "5551999998888"
 # }

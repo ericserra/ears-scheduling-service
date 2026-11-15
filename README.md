@@ -100,6 +100,8 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `SleekFlow__RemetenteTelefone` | — | número da clínica; sem ele nenhuma mensagem sai |
 | `SleekFlow__EtiquetaAgendamentoEmCurso` | `agendamento-em-curso` | precisa bater com o nome da etiqueta no SleekFlow e com o gatilho dos fluxos (na EARS: `agendamento em curso`, com espaços) |
 | `Automacao__ExpiracaoEtiquetaConfirmacao` | `18:00:00` | quanto a etiqueta da confirmação D-1 fica no contato sem resposta |
+| `Automacao__TelefoneAvisoRecepcao` | _(vazio)_ | celular da recepção (com DDI). Recebe, por WhatsApp, o aviso das consultas que o disparo D-1 não confirma sozinho (paciente sem CPF ou celular na Amplimed). Vazio desliga o aviso |
+| `Automacao__Templates__AvisoRecepcao` | `ears_aviso_recepcao` | template do aviso à recepção, com 3 variáveis: `{{1}}` quantidade, `{{2}}` dia (dd/MM), `{{3}}` lista de horário e nome separados por `;` |
 | `Automacao__DiasSincronizacaoAgenda` | `2` | janela do polling, contando hoje |
 | `Amplimed__Agendamento__Usuclin` | — | número da clínica; sem ele o cenário A não roda |
 
@@ -112,7 +114,7 @@ Parâmetros de automação ajustáveis sem recompilar:
 | `POST` | `/webhooks/sleekflow` | recebe mensagens e respostas de botão |
 | `GET` | `/admin/agendamentos?dia=` | agendamentos do dia com status |
 | `GET` | `/admin/logs?pagina=` | trilha de auditoria de mensagens |
-| `POST` | `/admin/confirmacao/disparar?dia=&telefones=&simular=&reenviar=&todos=` | dispara a confirmação D-1 de um dia. Exige `telefones` ou `todos=true`; `simular=true` não envia; `reenviar=true` repete para quem já recebeu. Decide pelo status da agenda da Amplimed lido na hora: só recebe quem ainda está "Agendado" lá (confirmado, cancelado, bloqueado ou fora da agenda ficam de fora); quem recebeu há menos de 6 h só recebe de novo com `reenviar=true`; se a agenda não puder ser lida, responde 502/409 e nada é enviado |
+| `POST` | `/admin/confirmacao/disparar?dia=&telefones=&simular=&reenviar=&todos=` | dispara a confirmação D-1 de um dia. Exige `telefones` ou `todos=true`; `simular=true` não envia; `reenviar=true` repete para quem já recebeu. `avisarRecepcao=false` suprime o WhatsApp à recepção (por padrão, o disparo real sem filtro de telefone avisa quem precisa de confirmação manual). Decide pelo status da agenda da Amplimed lido na hora: só recebe quem ainda está "Agendado" lá (confirmado, cancelado, bloqueado ou fora da agenda ficam de fora); quem recebeu há menos de 6 h só recebe de novo com `reenviar=true`; se a agenda não puder ser lida, responde 502/409 e nada é enviado |
 | `POST` | `/admin/agenda/sincronizar?dia=` | força o polling da agenda da Amplimed |
 | `POST` | `/admin/conversas/expirar` | expira conversas paradas e libera etiquetas |
 | `GET` | `/admin/conversas/etiquetas-presas` | pacientes que ficaram sem menu |

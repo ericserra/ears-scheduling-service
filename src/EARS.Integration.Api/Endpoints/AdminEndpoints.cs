@@ -85,7 +85,7 @@ public static class AdminEndpoints
         // Disparo manual da confirmação D-1, para teste. Sem filtro ele atingiria
         // todos os pacientes do dia, então exige telefones=... ou todos=true.
         grupo.MapPost("/confirmacao/disparar", async (
-            DateOnly? dia, string? telefones, bool? todos, bool? simular, bool? reenviar,
+            DateOnly? dia, string? telefones, bool? todos, bool? simular, bool? reenviar, bool? avisarRecepcao,
             EnviarConfirmacaoD1UseCase useCase, IRelogio relogio, CancellationToken ct) =>
         {
             HashSet<string>? filtro = null;
@@ -117,7 +117,8 @@ public static class AdminEndpoints
             {
                 var resultado = await useCase.ExecutarParaDiaAsync(
                     dia ?? relogio.HojeLocal.AddDays(1),
-                    new OpcoesDisparo(filtro, simular ?? false, reenviar ?? false, ValidarNaAgenda: true),
+                    new OpcoesDisparo(filtro, simular ?? false, reenviar ?? false, ValidarNaAgenda: true,
+                        AvisarRecepcao: avisarRecepcao ?? true),
                     ct);
 
                 return Results.Ok(resultado);

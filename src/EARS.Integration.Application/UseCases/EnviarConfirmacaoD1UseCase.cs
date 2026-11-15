@@ -3,6 +3,7 @@ using EARS.Integration.Application.Dtos;
 using EARS.Integration.Application.Options;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
+using EARS.Integration.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -151,17 +152,22 @@ public sealed class EnviarConfirmacaoD1UseCase(
             }
         }
 
-        await uow.SalvarAsync(ct);
-        logger.LogInformation(
-            "Confirmação D-1 de {Dia} concluída: {Enviados} enviados de {Total} agendamentos{Simulacao}.",
-            dia, enviados, alvos.Count, opcoes.Simular ? " (simulação)" : "");
-
         // Quem a agenda ainda mostra como Agendado mas não tem como receber a mensagem
         // (paciente sem CPF ou sem celular na Amplimed): a recepção confirma à mão.
         var contatoManual = (descartados ?? Array.Empty<DescartadoDaAgenda>())
             .Where(d => !string.IsNullOrWhiteSpace(d.Paciente)
                         && MapaStatus.DeTexto(d.StatusNaAgenda) == StatusAmplimed.Agendado)
             .ToList();
+
+        // Teste filtrado por telefone e simulação não avisam a recepção: o aviso
+        // é de um disparo de verdade sobre a agenda do dia.
+        if (opcoes.AvisarRecepcao && !opcoes.Simular && opcoes.Telefones is null && contatoManual.Count > 0)
+            await AvisarRecepcaoAsync(dia, contatoManual, ct);
+
+        await uow.SalvarAsync(ct);
+        logger.LogInformation(
+            "Confirmação D-1 de {Dia} concluída: {Enviados} enviados de {Total} agendamentos{Simulacao}.",
+            dia, enviados, alvos.Count, opcoes.Simular ? " (simulação)" : "");
 
         return new ResultadoDisparo(dia, opcoes.Simular, alvos.Count, enviados, itens, contatoManual);
     }
@@ -208,6 +214,63 @@ public sealed class EnviarConfirmacaoD1UseCase(
         }
 
         return (await agendamentos.ListarPorDiaAsync(dia, ct), agendados, descartados);
+    }
+
+    /// <summary>
+    /// Avisa a recepção, por WhatsApp, de quem precisa de confirmação manual. A
+    /// mensagem parte da empresa, então vai por template aprovado; a lista vai em
+    /// uma só variável porque a Meta não aceita quebra de linha nelas. Falha aqui
+    /// não desfaz o disparo: fica no log e na resposta do endpoint.
+    /// </summary>
+    private async Task AvisarRecepcaoAsync(
+        DateOnly dia, IReadOnlyList<DescartadoDaAgenda> pacientes, CancellationToken ct)
+    {
+        if (!Telefone.TryCreate(_opcoes.TelefoneAvisoRecepcao, out var recepcao) || recepcao is null)
+        {
+            logger.LogWarning(
+                "{Total} consulta(s) de {Dia} precisam de confirmação manual, mas Automacao__TelefoneAvisoRecepcao " +
+                "não está configurado; a recepção não foi avisada.", pacientes.Count, dia);
+            return;
+        }
+
+        const int limiteDaLista = 700;
+        var itens = pacientes
+            .Select(p => $"{p.Horario[^5..]} {p.Paciente!.Trim()}")
+            .ToList();
+
+        var lista = new System.Text.StringBuilder();
+        var incluidos = 0;
+        foreach (var item in itens)
+        {
+            var trecho = (incluidos == 0 ? "" : "; ") + item;
+            if (lista.Length + trecho.Length > limiteDaLista) break;
+            lista.Append(trecho);
+            incluidos++;
+        }
+
+        if (incluidos < itens.Count)
+            lista.Append($"; e mais {itens.Count - incluidos}");
+
+        var request = new EnvioTemplateRequest(
+            recepcao.Value,
+            _opcoes.Templates.AvisoRecepcao,
+            new List<VariavelTemplate>
+            {
+                new("quantidade", pacientes.Count.ToString()),
+                new("dia", dia.ToString("dd/MM")),
+                new("lista", lista.ToString()),
+            });
+
+        var resultado = await sleekFlow.EnviarTemplateAsync(request, ct);
+
+        await logs.AdicionarAsync(new MensagemLog(
+            recepcao.Value, TipoMensagem.EnviadaTemplate, _opcoes.Templates.AvisoRecepcao,
+            $"aviso à recepção · {pacientes.Count} consulta(s) de {dia:dd/MM} sem contato",
+            null, resultado.Sucesso, resultado.Erro), ct);
+
+        if (!resultado.Sucesso)
+            logger.LogError("Falha ao avisar a recepção sobre {Total} consulta(s) de {Dia}: {Erro}",
+                pacientes.Count, dia, resultado.Erro);
     }
 
     /// <summary>
@@ -271,11 +334,16 @@ public sealed class EnviarConfirmacaoD1UseCase(
 /// "Agendado" lá, tenha ou não recebido antes. Exige a leitura da agenda; se ela
 /// falhar, o disparo aborta em vez de usar dados velhos.
 /// </param>
+/// <param name="AvisarRecepcao">
+/// Avisa a recepção, por WhatsApp, de quem precisa de confirmação manual. Só vale
+/// em disparo real e sem filtro de telefone.
+/// </param>
 public sealed record OpcoesDisparo(
     IReadOnlySet<string>? Telefones = null,
     bool Simular = false,
     bool Reenviar = false,
-    bool ValidarNaAgenda = false);
+    bool ValidarNaAgenda = false,
+    bool AvisarRecepcao = true);
 
 /// <summary>A agenda da clínica não pôde ser lida, e a operação depende dela.</summary>
 public sealed class AgendaIndisponivelException(string mensagem) : Exception(mensagem);

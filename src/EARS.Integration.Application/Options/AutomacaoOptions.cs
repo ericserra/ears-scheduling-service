@@ -91,6 +91,14 @@ public sealed class AutomacaoOptions
     /// </remarks>
     public bool ConfirmacaoAtiva { get; set; }
 
+    /// <summary>
+    /// Celular da recepção, com DDI (ex.: 5551999998888). Recebe o aviso das
+    /// consultas que o disparo D-1 não consegue confirmar sozinho: paciente sem
+    /// CPF ou sem celular na Amplimed. Vazio desliga o aviso, que então só
+    /// aparece no log e na resposta do disparo.
+    /// </summary>
+    public string TelefoneAvisoRecepcao { get; set; } = string.Empty;
+
     public TemplatesOptions Templates { get; set; } = new();
 }
 
@@ -99,4 +107,10 @@ public sealed class TemplatesOptions
     public string Confirmacao { get; set; } = "ears_confirmacao_consulta";
     public string Lembrete { get; set; } = "ears_lembrete_confirmacao";
     public string AgendamentoRealizado { get; set; } = "ears_agendamento_confirmado";
+
+    /// <summary>
+    /// Aviso interno à recepção, com três variáveis: {{1}} quantidade, {{2}} dia
+    /// (dd/MM) e {{3}} lista de horário e nome separados por ponto e vírgula.
+    /// </summary>
+    public string AvisoRecepcao { get; set; } = "ears_aviso_recepcao";
 }
