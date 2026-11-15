@@ -114,6 +114,11 @@ public sealed class SincronizarAgendaUseCase(
         int criados = 0, conciliados = 0, vinculados = 0, semCpf = 0, semTelefone = 0, statusDesconhecido = 0;
         var agendados = new HashSet<string>();
 
+        // O paciente novo só vai ao banco no SalvarAsync do fim. Sem este cache, o
+        // segundo agendamento do mesmo CPF no dia não o encontraria na consulta e
+        // criaria outro, estourando o índice único de CPF.
+        var pacientesDoDia = new Dictionary<string, Paciente?>();
+
         foreach (var item in daAgenda)
         {
             ct.ThrowIfCancellationRequested();
@@ -150,7 +155,7 @@ public sealed class SincronizarAgendaUseCase(
                 continue;
             }
 
-            var paciente = await ResolverPacienteAsync(item.Beneficiario, ct);
+            var paciente = await ResolverPacienteAsync(item.Beneficiario, pacientesDoDia, ct);
 
             if (paciente is null)
             {
@@ -195,7 +200,7 @@ public sealed class SincronizarAgendaUseCase(
     /// não há como enviar mensagem — sem CPF para buscar, ou sem celular válido.
     /// </summary>
     private async Task<Paciente?> ResolverPacienteAsync(
-        BeneficiarioDaAgenda beneficiario, CancellationToken ct)
+        BeneficiarioDaAgenda beneficiario, Dictionary<string, Paciente?> pacientesDoDia, CancellationToken ct)
     {
         // codRef cunhado por nós identifica o paciente sem nenhuma chamada extra.
         if (!string.IsNullOrWhiteSpace(beneficiario.CodRef)
@@ -213,6 +218,15 @@ public sealed class SincronizarAgendaUseCase(
             return null;
         }
 
+        if (pacientesDoDia.TryGetValue(cpf.Value, out var jaResolvido)) return jaResolvido;
+
+        var resolvido = await ResolverPorCpfAsync(cpf, ct);
+        pacientesDoDia[cpf.Value] = resolvido;
+        return resolvido;
+    }
+
+    private async Task<Paciente?> ResolverPorCpfAsync(Cpf cpf, CancellationToken ct)
+    {
         var local = await pacientes.ObterPorCpfAsync(cpf.Value, ct);
         if (local is not null) return local;
 

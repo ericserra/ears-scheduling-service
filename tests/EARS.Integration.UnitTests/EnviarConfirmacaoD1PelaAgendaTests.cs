@@ -24,6 +24,8 @@ public class EnviarConfirmacaoD1PelaAgendaTests
     private static readonly DateOnly Dia = new(2026, 11, 16);
     private const string Usuclin = "57622";
 
+    private readonly IPacienteRepository _pacientes = Substitute.For<IPacienteRepository>();
+    private readonly IAmplimedPacientesClient _pacientesClient = Substitute.For<IAmplimedPacientesClient>();
     private readonly IAmplimedAgendamentoClient _agenda = Substitute.For<IAmplimedAgendamentoClient>();
     private readonly IAgendamentoRepository _agendamentos = Substitute.For<IAgendamentoRepository>();
     private readonly ISleekFlowClient _sleekFlow = Substitute.For<ISleekFlowClient>();
@@ -52,9 +54,9 @@ public class EnviarConfirmacaoD1PelaAgendaTests
 
         var sincronizar = new SincronizarAgendaUseCase(
             _agenda,
-            Substitute.For<IAmplimedPacientesClient>(),
+            _pacientesClient,
             prontidao,
-            Substitute.For<IPacienteRepository>(),
+            _pacientes,
             _agendamentos, _uow, _relogio, opcoes,
             NullLogger<SincronizarAgendaUseCase>.Instance);
 
@@ -76,11 +78,12 @@ public class EnviarConfirmacaoD1PelaAgendaTests
         return agendamento;
     }
 
-    private static AgendamentoDaAgenda ItemDaAgenda(long id, StatusAmplimed? status, string? texto = null) => new(
+    private static AgendamentoDaAgenda ItemDaAgenda(
+        long id, StatusAmplimed? status, string? texto = null, string? cpf = null) => new(
         Usuclin, id, new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero), 30,
         status, texto ?? status?.ToString(), null, null, null,
         new ProfissionalDaAgenda("Dra. Inesângela", null, null, null, null),
-        new BeneficiarioDaAgenda(null, null, null, "Maria Souza", null));
+        new BeneficiarioDaAgenda(null, null, cpf, "Maria Souza", null));
 
     /// <summary>Monta o dia: o que a agenda devolve e o espelho local correspondente.</summary>
     private void Dia16(IReadOnlyList<AgendamentoDaAgenda> daAgenda, params Agendamento[] espelho)
@@ -250,5 +253,26 @@ public class EnviarConfirmacaoD1PelaAgendaTests
 
         consulta.InicioEm.Offset.Should().Be(TimeSpan.Zero);
         consulta.InicioEm.Should().Be(comOffset);
+    }
+
+    [Fact]
+    public async Task DoisAgendamentosDoMesmoCpfNoDiaCriamUmSoPaciente()
+    {
+        // O paciente novo ainda não está no banco quando o segundo item é lido:
+        // criar de novo estoura o índice único de CPF.
+        const string cpf = "52998224725";
+        _agenda.ListarAgendaCompletaDoDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            ItemDaAgenda(1, StatusAmplimed.Agendado, cpf: cpf),
+            ItemDaAgenda(2, StatusAmplimed.Agendado, cpf: cpf),
+        });
+        _pacientesClient.BuscarPorCpfAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new PacienteAmplimed("EARS-1", "Maria Souza", cpf, "5551988887777", null, null, null));
+        _agendamentos.ListarPorDiaAsync(Dia, Arg.Any<CancellationToken>()).Returns(Array.Empty<Agendamento>());
+
+        await Criar().ExecutarParaDiaAsync(Dia, new OpcoesDisparo(Simular: true, ValidarNaAgenda: true));
+
+        await _pacientes.Received(1).AdicionarAsync(Arg.Any<Paciente>(), Arg.Any<CancellationToken>());
+        await _agendamentos.Received(2).AdicionarAsync(Arg.Any<Agendamento>(), Arg.Any<CancellationToken>());
     }
 }
