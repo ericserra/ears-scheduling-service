@@ -164,6 +164,10 @@ namespace EARS.Integration.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("SexoBiologicoInformado")
+                        .HasMaxLength(1)
+                        .HasColumnType("character varying(1)");
+
                     b.Property<string>("SleekFlowContatoId")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

@@ -191,6 +191,19 @@ public sealed class ProcessarMensagemRecebidaUseCase(
                     break;
                 }
                 conversa.RegistrarDataNascimento(nascimento);
+                await Responder(conversa,
+                    "Qual o sexo biológico do paciente? Pode responder feminino ou masculino.", ct);
+                conversa.TransicionarPara(EstadoConversa.AguardandoSexoBiologico);
+                break;
+
+            case EstadoConversa.AguardandoSexoBiologico:
+                var sexo = SexoBiologico.Interpretar(texto);
+                if (sexo is null)
+                {
+                    await Responder(conversa, "Não entendi. Pode responder feminino ou masculino?", ct);
+                    break;
+                }
+                conversa.RegistrarSexoBiologico(sexo);
                 await ResolverPacienteEOfertarAsync(conversa, ct);
                 break;
 
@@ -513,6 +526,7 @@ public sealed class ProcessarMensagemRecebidaUseCase(
                 Nome: paciente.Nome,
                 DataNascimento: paciente.DataNascimento,
                 Celular: paciente.Telefone,
+                SexoBiologico: conversa.SexoBiologicoInformado,
                 Observacoes: observacoes),
             ct);
 

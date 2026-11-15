@@ -1,5 +1,6 @@
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
+using EARS.Integration.Domain.ValueObjects;
 using FluentAssertions;
 using Xunit;
 
@@ -15,6 +16,37 @@ public class ConversaTests
     {
         Nova().EtiquetaAplicada.Should().BeFalse(
             "a etiqueta só existe depois que o SleekFlow confirma que a aplicou");
+    }
+
+    [Theory]
+    [InlineData("feminino", "F")]
+    [InlineData("Masculino", "M")]
+    [InlineData("  MULHER ", "F")]
+    [InlineData("homem", "M")]
+    [InlineData("f", "F")]
+    [InlineData("m", "M")]
+    [InlineData("Sexo feminino", "F")]
+    public void SexoBiologicoELidoDaRespostaLivre(string resposta, string esperado)
+    {
+        SexoBiologico.Interpretar(resposta).Should().Be(esperado);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("não sei")]
+    [InlineData("masculino e feminino")]
+    [InlineData("outro")]
+    public void SexoBiologicoSemRespostaClaraNaoEhPalpitado(string resposta)
+    {
+        SexoBiologico.Interpretar(resposta).Should().BeNull();
+    }
+
+    [Fact]
+    public void ConversaGuardaOSexoBiologicoInformado()
+    {
+        var conversa = Nova();
+        conversa.RegistrarSexoBiologico("F");
+        conversa.SexoBiologicoInformado.Should().Be("F");
     }
 
     [Fact]

@@ -88,6 +88,7 @@ public class ConversaConfiguration : IEntityTypeConfiguration<Conversa>
         b.Property(x => x.NomeInformado).HasMaxLength(200);
         b.Property(x => x.CpfInformado).HasMaxLength(11);
         b.Property(x => x.DataNascimentoInformada);
+        b.Property(x => x.SexoBiologicoInformado).HasMaxLength(1);
         b.Property(x => x.HorariosOfertadosJson).HasColumnType("jsonb");
         b.HasIndex(x => new { x.Telefone, x.Estado });
 

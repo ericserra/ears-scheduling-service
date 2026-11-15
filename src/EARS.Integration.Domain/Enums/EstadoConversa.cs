@@ -38,6 +38,13 @@ public enum EstadoConversa
     /// <summary>Confirmação explícita antes de cancelar de fato.</summary>
     AguardandoConfirmacaoCancelamento = 10,
 
+    /// <summary>
+    /// Depois da data de nascimento. A Amplimed exige o sexo biológico no
+    /// cadastrar-agendamento; o valor entra no fim da enum para não renumerar os
+    /// estados já gravados no banco.
+    /// </summary>
+    AguardandoSexoBiologico = 11,
+
     Concluida = 20,
     TransferidaParaHumano = 21,
     Expirada = 22

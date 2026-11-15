@@ -67,6 +67,9 @@ public class Conversa : EntidadeBase
     /// cadastrar-agendamento casa por CPF + data de nascimento.
     /// </summary>
     public DateOnly? DataNascimentoInformada { get; private set; }
+    /// <summary>"M" ou "F", exigido pelo cadastrar-agendamento da Amplimed.</summary>
+    public string? SexoBiologicoInformado { get; private set; }
+
     public Guid? PacienteId { get; private set; }
 
     /// <summary>
@@ -89,6 +92,7 @@ public class Conversa : EntidadeBase
     public void RegistrarNome(string nome) { NomeInformado = nome; Tocar(); }
     public void RegistrarCpf(string cpf) { CpfInformado = cpf; Tocar(); }
     public void RegistrarDataNascimento(DateOnly data) { DataNascimentoInformada = data; Tocar(); }
+    public void RegistrarSexoBiologico(string sexo) { SexoBiologicoInformado = sexo; Tocar(); }
     public void RegistrarParaQuem(bool ehOContato) { PacienteEhOContato = ehOContato; Tocar(); }
     public void RegistrarIdade(int idade) { IdadePaciente = idade; Tocar(); }
     public void RegistrarConvenio(string convenio) { Convenio = convenio; Tocar(); }
