@@ -31,13 +31,6 @@ namespace EARS.Integration.Infrastructure.Migrations
                 table: "agendamentos",
                 type: "timestamp with time zone",
                 nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "RespostasNaoEntendidas",
-                table: "agendamentos",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
         }
 
         /// <inheritdoc />
@@ -45,7 +38,6 @@ namespace EARS.Integration.Infrastructure.Migrations
         {
             migrationBuilder.DropColumn(name: "AcaoPendenteConfirmacao", table: "agendamentos");
             migrationBuilder.DropColumn(name: "AcaoPendenteEm", table: "agendamentos");
-            migrationBuilder.DropColumn(name: "RespostasNaoEntendidas", table: "agendamentos");
         }
     }
 }
