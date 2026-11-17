@@ -23,6 +23,20 @@ public class RegrasClinicaTests
         Regras.AtendeIdade(profissional, idade).Should().Be(esperado);
     }
 
+    [Theory]
+    [InlineData("Dra. Inesângela", "sexta com a Inesangela", true)]
+    [InlineData("Dra. Inesângela", "SEXTA DE MANHÃ COM A DRA INESÂNGELA", true)]
+    [InlineData("Luciane Pauletti", "quero com a luciane", true)]
+    [InlineData("Dra. Renata Tramontin", "sexta de manhã", false)]
+    [InlineData("Dra. Inesângela", "sexta de manhã", false)]
+    [InlineData("Dra. Inesângela", "dra", false)]
+    [InlineData("Dra. Inesângela", null, false)]
+    public void CitarAMedicaNaPreferenciaEReconhecidoSemTratamentoNemAcento(
+        string profissional, string? preferencia, bool esperado)
+    {
+        RegrasClinicaOptions.CitaProfissional(profissional, preferencia).Should().Be(esperado);
+    }
+
     [Fact]
     public void ProfissionalDesconhecidoNaoAtendeCriancaPorPadrao()
     {

@@ -443,7 +443,11 @@ public sealed class ProcessarMensagemRecebidaUseCase(
         }
 
         var oferta = candidatos
-            .OrderByDescending(h => CasaComAPreferencia(h.Inicio, conversa.PreferenciaDiaTurno))
+            .OrderByDescending(h =>
+                CasaComAPreferencia(h.Inicio, conversa.PreferenciaDiaTurno)
+                // Pesa mais que dia e turno somados (máximo 2): quem cita a médica quer
+                // a agenda dela, mesmo que outra tenha um horário mais cedo.
+                + (RegrasClinicaOptions.CitaProfissional(h.ProfissionalNome, conversa.PreferenciaDiaTurno) ? 3 : 0))
             .ThenBy(h => h.Inicio)
             .Take(_opcoes.MaxHorariosOfertados)
             .ToList();

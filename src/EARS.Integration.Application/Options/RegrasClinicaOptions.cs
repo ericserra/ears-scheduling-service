@@ -139,6 +139,24 @@ public sealed class RegrasClinicaOptions
         return a.Length > 0 && (b.Contains(a, StringComparison.Ordinal) || a.Contains(b, StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Verdadeiro quando o texto livre do paciente cita a profissional pelo nome
+    /// ("sexta com a Inesângela"). Ignora o tratamento ("Dra.") e partículas curtas;
+    /// serve só para ordenar a oferta, nunca para esconder as demais.
+    /// </summary>
+    public static bool CitaProfissional(string nomeProfissional, string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return false;
+
+        var alvo = Normalizar(texto);
+
+        return Normalizar(nomeProfissional)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim('.', ','))
+            .Where(t => t.Length >= 4 && t is not ("dra" or "doutora" or "doutor"))
+            .Any(t => alvo.Contains(t, StringComparison.Ordinal));
+    }
+
     public static string Normalizar(string entrada)
     {
         var decomposto = entrada.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
