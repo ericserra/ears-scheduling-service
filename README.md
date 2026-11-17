@@ -9,6 +9,9 @@ Dois fluxos:
    é gravado direto na agenda da Amplimed.
 2. **Confirmação de véspera (D-1)** — rotina diária envia template com botões
    Confirmar / Remarcar / Cancelar e atualiza o agendamento conforme a resposta.
+   O clique não age de imediato: o bot pergunta "Você deseja confirmar/cancelar/
+   reagendar?" com Sim e Não, e só o Sim executa. O Não volta à pergunta inicial,
+   para um toque errado não cancelar a consulta de ninguém.
    **Desligada por padrão** (`Automacao__ConfirmacaoAtiva`), aguardando a clínica
    confirmar que não duplica lembrete que já envia por outro meio.
 

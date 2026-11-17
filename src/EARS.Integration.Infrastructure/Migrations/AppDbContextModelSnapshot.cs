@@ -28,6 +28,13 @@ namespace EARS.Integration.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AcaoPendenteConfirmacao")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTimeOffset?>("AcaoPendenteEm")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("AtualizadoEm")
                         .HasColumnType("timestamp with time zone");
 

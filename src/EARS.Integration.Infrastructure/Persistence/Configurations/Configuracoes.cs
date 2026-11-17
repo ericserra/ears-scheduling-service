@@ -52,6 +52,7 @@ public class AgendamentoConfiguration : IEntityTypeConfiguration<Agendamento>
         // Espelha a etiqueta aplicada no envio da confirmação D-1, para o job de
         // expiração saber de quem tirar sem consultar o SleekFlow contato a contato.
         b.Property(x => x.EtiquetaConfirmacaoAplicada).HasDefaultValue(false);
+        b.Property(x => x.AcaoPendenteConfirmacao).HasMaxLength(12);
 
         b.HasIndex(x => x.IdIntegracao).IsUnique().HasFilter("\"IdIntegracao\" IS NOT NULL");
         b.HasIndex(x => new { x.Usuclin, x.IdAgendamentoAmplimed })

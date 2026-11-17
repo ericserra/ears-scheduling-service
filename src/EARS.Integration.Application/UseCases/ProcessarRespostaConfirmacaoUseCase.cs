@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Dtos;
+using EARS.Integration.Application.Options;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -70,7 +72,21 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
             agendamento = ativos[0];
         }
 
-        var resposta = Interpretar(mensagem);
+        RespostaConfirmacao resposta;
+
+        if (agendamento.ConfirmacaoEnviadaEm is not null)
+        {
+            // Resposta ao nosso template: o botão não age no primeiro toque. Primeiro
+            // vem "Você deseja ...?", e só o Sim executa; o Não volta à pergunta inicial.
+            var decidida = await DecidirComSegundaConfirmacaoAsync(agendamento, mensagem, ct);
+            if (decidida is null) return true;
+
+            resposta = decidida.Value;
+        }
+        else
+        {
+            resposta = Interpretar(mensagem);
+        }
 
         switch (resposta)
         {
@@ -90,7 +106,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                 await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
                     "Consulta cancelada. Se quiser remarcar, é só escrever por aqui.", ct);
                 await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
-                    $"CANCELAMENTO — {agendamento.ProfissionalNome} em {agendamento.InicioEm:dd/MM HH:mm}. Horário liberado.", ct);
+                    $"CANCELAMENTO — {agendamento.ProfissionalNome} em {Hora(agendamento)}. Horário liberado.", ct);
                 // A transferência já troca as etiquetas: tira a de agendamento em curso.
                 agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
@@ -104,7 +120,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                 await sleekFlow.EnviarTextoAsync(mensagem.Telefone,
                     "Certo! Vou encaminhar para a nossa equipe, que combina o novo horário com você por aqui.", ct);
                 await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
-                    $"REMARCAÇÃO — {agendamento.ProfissionalNome} em {agendamento.InicioEm:dd/MM HH:mm}. " +
+                    $"REMARCAÇÃO — {agendamento.ProfissionalNome} em {Hora(agendamento)}. " +
                     "O horário original segue reservado na agenda até a recepção remarcar.", ct);
                 agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
@@ -114,18 +130,166 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
                     "Resposta não compreendida para o agendamento {AgendamentoId}; escalando para atendimento humano.",
                     agendamento.Id);
                 await sleekFlow.TransferirParaAtendimentoAsync(mensagem.Telefone,
-                    $"Resposta não compreendida sobre a consulta de {agendamento.InicioEm:dd/MM HH:mm}: \"{mensagem.Texto}\"", ct);
+                    $"Resposta não compreendida sobre a consulta de {Hora(agendamento)}: \"{mensagem.Texto}\"", ct);
                 agendamento.MarcarEtiquetaConfirmacaoRemovida();
                 break;
         }
 
-        await logs.AdicionarAsync(new MensagemLog(
+        await RegistrarRecebidaAsync(agendamento, mensagem, ct);
+
+        await uow.SalvarAsync(ct);
+        return true;
+    }
+
+    private Task RegistrarRecebidaAsync(Agendamento agendamento, MensagemRecebida mensagem, CancellationToken ct) =>
+        logs.AdicionarAsync(new MensagemLog(
             mensagem.Telefone, TipoMensagem.Recebida, null,
             mensagem.BotaoPayload ?? mensagem.Texto ?? string.Empty,
             agendamento.Id, sucesso: true), ct);
 
-        await uow.SalvarAsync(ct);
-        return true;
+    // -----------------------------------------------------------------------
+    // Segunda confirmação (failsafe contra clique errado)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Quanto tempo a pergunta "Você deseja ...?" espera pelo Sim. Depois disso, um
+    /// "sim" solto não executa nada: o paciente é perguntado de novo.
+    /// </summary>
+    private static readonly TimeSpan ValidadeDaPergunta = TimeSpan.FromHours(6);
+
+    public const string BotaoSim = "acao_sim";
+    public const string BotaoNao = "acao_nao";
+
+    /// <summary>
+    /// Devolve a ação a executar, ou <c>null</c> quando só houve pergunta: nada
+    /// a fazer agora e a resposta ao paciente já foi enviada e registrada.
+    /// </summary>
+    private async Task<RespostaConfirmacao?> DecidirComSegundaConfirmacaoAsync(
+        Agendamento agendamento, MensagemRecebida mensagem, CancellationToken ct)
+    {
+        var agora = relogio.AgoraUtc;
+        var pendente = agendamento.AcaoPendenteVigente(agora, ValidadeDaPergunta);
+        var simNao = InterpretarSimNao(mensagem);
+
+        if (pendente is not null && simNao is true)
+        {
+            agendamento.LimparAcaoPendente();
+            return AcaoParaResposta(pendente);
+        }
+
+        if (simNao is false || (pendente is null && EhBotaoDaSegundaConfirmacao(mensagem)))
+        {
+            // Não, ou o Sim de uma pergunta que já venceu: volta ao começo.
+            agendamento.LimparAcaoPendente();
+            await PerguntarOQueFazerAsync(agendamento, mensagem.Telefone, ct);
+            await RegistrarRecebidaAsync(agendamento, mensagem, ct);
+            await uow.SalvarAsync(ct);
+            return null;
+        }
+
+        var resposta = Interpretar(mensagem);
+
+        if (resposta is RespostaConfirmacao.Confirmar or RespostaConfirmacao.Cancelar or RespostaConfirmacao.Remarcar)
+        {
+            agendamento.AguardarConfirmacaoDaAcao(NomeDaAcao(resposta), agora);
+            await PerguntarSeTemCertezaAsync(agendamento, resposta, mensagem.Telefone, ct);
+            await RegistrarRecebidaAsync(agendamento, mensagem, ct);
+            await uow.SalvarAsync(ct);
+            return null;
+        }
+
+        agendamento.LimparAcaoPendente();
+        return resposta;
+    }
+
+    private async Task PerguntarSeTemCertezaAsync(
+        Agendamento agendamento, RespostaConfirmacao acao, string telefone, CancellationToken ct)
+    {
+        var verbo = acao switch
+        {
+            RespostaConfirmacao.Confirmar => "confirmar",
+            RespostaConfirmacao.Cancelar => "cancelar",
+            _ => "reagendar"
+        };
+
+        await EnviarComBotoesOuTextoAsync(
+            telefone,
+            $"Você deseja {verbo} a sua consulta de {Quando(agendamento)}?",
+            [new BotaoResposta(BotaoSim, "Sim"), new BotaoResposta(BotaoNao, "Não")],
+            "Responda SIM ou NÃO.", ct);
+    }
+
+    private Task PerguntarOQueFazerAsync(Agendamento agendamento, string telefone, CancellationToken ct) =>
+        EnviarComBotoesOuTextoAsync(
+            telefone,
+            $"Sem problemas! O que você prefere fazer com a consulta de {Quando(agendamento)}?",
+            [
+                new BotaoResposta("confirmar", "Confirmar"),
+                new BotaoResposta("cancelar", "Cancelar"),
+                new BotaoResposta("remarcar", "Reagendar")
+            ],
+            "Responda confirmar, cancelar ou reagendar.", ct);
+
+    /// <summary>
+    /// Botões só valem dentro da janela de 24h, que o clique do paciente acabou de
+    /// abrir. Se mesmo assim falharem, a pergunta vai como texto: sem resposta
+    /// nenhuma o paciente ficaria sem saber que nada foi feito.
+    /// </summary>
+    private async Task EnviarComBotoesOuTextoAsync(
+        string telefone, string texto, IReadOnlyList<BotaoResposta> botoes, string complemento, CancellationToken ct)
+    {
+        var envio = await sleekFlow.EnviarBotoesAsync(new EnvioBotoesRequest(telefone, texto, botoes), ct);
+        if (envio is { Sucesso: true }) return;
+
+        logger.LogWarning(
+            "Botões da segunda confirmação não saíram para {Telefone} ({Erro}); enviando como texto.",
+            telefone, envio?.Erro ?? "sem resposta");
+
+        await sleekFlow.EnviarTextoAsync(telefone, $"{texto} {complemento}", ct);
+    }
+
+    private string Quando(Agendamento agendamento) =>
+        relogio.ParaLocal(agendamento.InicioEm).ToString("dd/MM 'às' HH:mm", CultureInfo.InvariantCulture);
+
+    private string Hora(Agendamento agendamento) =>
+        relogio.ParaLocal(agendamento.InicioEm).ToString("dd/MM HH:mm", CultureInfo.InvariantCulture);
+
+    private static bool EhBotaoDaSegundaConfirmacao(MensagemRecebida mensagem) =>
+        !string.IsNullOrWhiteSpace(mensagem.BotaoPayload)
+        && mensagem.BotaoPayload.Trim().ToLowerInvariant() is BotaoSim or BotaoNao;
+
+    private static string NomeDaAcao(RespostaConfirmacao resposta) => resposta switch
+    {
+        RespostaConfirmacao.Confirmar => "confirmar",
+        RespostaConfirmacao.Cancelar => "cancelar",
+        _ => "remarcar"
+    };
+
+    private static RespostaConfirmacao AcaoParaResposta(string acao) => acao switch
+    {
+        "confirmar" => RespostaConfirmacao.Confirmar,
+        "cancelar" => RespostaConfirmacao.Cancelar,
+        "remarcar" => RespostaConfirmacao.Remarcar,
+        _ => RespostaConfirmacao.NaoCompreendida
+    };
+
+    /// <summary>
+    /// Sim ou não à segunda pergunta. Aceita o id do botão e o texto (o título do
+    /// botão chega como texto em alguns canais). <c>null</c> = nem um nem outro.
+    /// </summary>
+    internal static bool? InterpretarSimNao(MensagemRecebida mensagem)
+    {
+        var bruto = !string.IsNullOrWhiteSpace(mensagem.BotaoPayload) ? mensagem.BotaoPayload : mensagem.Texto;
+        if (string.IsNullOrWhiteSpace(bruto)) return null;
+
+        var texto = RegrasClinicaOptions.Normalizar(bruto).Trim('.', '!', ' ');
+
+        return texto switch
+        {
+            "acao_sim" or "sim" or "s" => true,
+            "acao_nao" or "nao" or "n" => false,
+            _ => null
+        };
     }
 
     /// <summary>
@@ -272,7 +436,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
             return mensagem.BotaoPayload.Trim().ToLowerInvariant() switch
             {
                 "confirmar" => RespostaConfirmacao.Confirmar,
-                "remarcar" => RespostaConfirmacao.Remarcar,
+                "remarcar" or "reagendar" => RespostaConfirmacao.Remarcar,
                 "cancelar" => RespostaConfirmacao.Cancelar,
                 _ => RespostaConfirmacao.NaoCompreendida
             };
@@ -283,7 +447,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
         return texto switch
         {
             "1" or "sim" or "confirmo" or "confirmar" => RespostaConfirmacao.Confirmar,
-            "2" or "remarcar" => RespostaConfirmacao.Remarcar,
+            "2" or "remarcar" or "reagendar" => RespostaConfirmacao.Remarcar,
             "3" or "cancelar" => RespostaConfirmacao.Cancelar,
             _ => RespostaConfirmacao.NaoCompreendida
         };

@@ -121,6 +121,37 @@ public class Agendamento : EntidadeBase
     /// <summary>Última vez que o status foi conciliado com a agenda da Amplimed.</summary>
     public DateTimeOffset? SincronizadoEm { get; private set; }
 
+    /// <summary>
+    /// Ação ("confirmar", "cancelar" ou "remarcar") que o paciente pediu pelo botão do
+    /// template e ainda não confirmou. Só vira ação de fato depois do "Sim": é o
+    /// failsafe contra clique errado.
+    /// </summary>
+    public string? AcaoPendenteConfirmacao { get; private set; }
+
+    public DateTimeOffset? AcaoPendenteEm { get; private set; }
+
+    public void AguardarConfirmacaoDaAcao(string acao, DateTimeOffset agora)
+    {
+        AcaoPendenteConfirmacao = acao;
+        AcaoPendenteEm = agora;
+        Tocar();
+    }
+
+    public void LimparAcaoPendente()
+    {
+        if (AcaoPendenteConfirmacao is null && AcaoPendenteEm is null) return;
+
+        AcaoPendenteConfirmacao = null;
+        AcaoPendenteEm = null;
+        Tocar();
+    }
+
+    /// <summary>A ação pendente, ou <c>null</c> se não há ou se a pergunta já venceu.</summary>
+    public string? AcaoPendenteVigente(DateTimeOffset agora, TimeSpan validade) =>
+        AcaoPendenteConfirmacao is not null && AcaoPendenteEm is { } em && agora - em <= validade
+            ? AcaoPendenteConfirmacao
+            : null;
+
     public void MarcarConfirmacaoEnviada() { ConfirmacaoEnviadaEm = DateTimeOffset.UtcNow; Tocar(); }
     public void MarcarLembreteEnviado() { LembreteEnviadoEm = DateTimeOffset.UtcNow; Tocar(); }
 
