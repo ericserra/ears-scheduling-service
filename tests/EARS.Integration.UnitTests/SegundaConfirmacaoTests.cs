@@ -1,11 +1,13 @@
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Dtos;
+using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
 using EARS.Integration.Domain.ValueObjects;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
@@ -60,7 +62,8 @@ public class SegundaConfirmacaoTests
 
         return new ProcessarRespostaConfirmacaoUseCase(
             _agendamentos, _conversas, _relogio, _amplimed, _sleekFlow, _logs, _outbox,
-            cancelamento, _uow, NullLogger<ProcessarRespostaConfirmacaoUseCase>.Instance);
+            cancelamento, Options.Create(new RegrasClinicaOptions()), _uow,
+            NullLogger<ProcessarRespostaConfirmacaoUseCase>.Instance);
     }
 
     private static MensagemRecebida Botao(string payload) => new(Fone, "c-1", null, payload, DateTimeOffset.UtcNow);
@@ -199,12 +202,80 @@ public class SegundaConfirmacaoTests
     }
 
     [Fact]
-    public async Task TextoQueNaoEntendemosContinuaIndoParaAtendimentoHumano()
+    public async Task TextoForaDaRespostaPedeDesculpasERepeteAPerguntaInicial()
     {
-        await Criar().ExecutarAsync(Texto("preciso falar com alguém sobre o valor"));
+        var tratada = await Criar().ExecutarAsync(Texto("quanto custa a consulta?"));
+
+        tratada.Should().BeTrue();
+        await _sleekFlow.Received(1).EnviarBotoesAsync(
+            Arg.Is<EnvioBotoesRequest>(r =>
+                r.Texto.StartsWith("Me desculpe, mas não entendi.")
+                && r.Texto.Contains("O que você prefere fazer com a consulta de 20/11 às 09:30?")
+                && r.Botoes.Select(b => b.Id).SequenceEqual(new[] { "confirmar", "cancelar", "remarcar" })),
+            Arg.Any<CancellationToken>());
+        _consulta.RespostasNaoEntendidas.Should().Be(1);
+        await NaoAgiu();
+    }
+
+    [Fact]
+    public async Task TextoForaDaRespostaComPerguntaPendenteRepeteASegundaConfirmacao()
+    {
+        var uso = Criar();
+        await uso.ExecutarAsync(Botao("cancelar"));
+
+        await uso.ExecutarAsync(Texto("talvez"));
+
+        _consulta.AcaoPendenteConfirmacao.Should().Be("cancelar", "a pergunta continua valendo");
+        await _sleekFlow.Received(1).EnviarBotoesAsync(
+            Arg.Is<EnvioBotoesRequest>(r =>
+                r.Texto == "Me desculpe, mas não entendi. Você deseja cancelar a sua consulta de 20/11 às 09:30?"
+                && r.Botoes.Select(b => b.Id).SequenceEqual(new[] { "acao_sim", "acao_nao" })),
+            Arg.Any<CancellationToken>());
+        await NaoAgiu();
+    }
+
+    [Fact]
+    public async Task EntenderUmaRespostaZeraAContagemDeErros()
+    {
+        var uso = Criar();
+        await uso.ExecutarAsync(Texto("hã?"));
+        await uso.ExecutarAsync(Texto("hã?"));
+        _consulta.RespostasNaoEntendidas.Should().Be(2);
+
+        await uso.ExecutarAsync(Botao("confirmar"));
+
+        _consulta.RespostasNaoEntendidas.Should().Be(0);
+        await uso.ExecutarAsync(Texto("hã?"));
+        await NaoAgiu();
+    }
+
+    [Fact]
+    public async Task DepoisDeTresRespostasSeguidasNaoEntendidasARecepcaoAssume()
+    {
+        var uso = Criar();
+
+        await uso.ExecutarAsync(Texto("hã?"));
+        await uso.ExecutarAsync(Texto("hã?"));
+        await _sleekFlow.DidNotReceive().TransferirParaAtendimentoAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        await uso.ExecutarAsync(Texto("hã?"));
 
         await _sleekFlow.Received(1).TransferirParaAtendimentoAsync(
             Fone, Arg.Is<string>(c => c.Contains("Resposta não compreendida")), Arg.Any<CancellationToken>());
-        _consulta.AcaoPendenteConfirmacao.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("quero falar com a recepção")]
+    [InlineData("pode me passar para um atendente?")]
+    [InlineData("estou com muita dor, urgência")]
+    public async Task PedidoDeAtendenteOuUrgenciaVaiDiretoParaARecepcao(string texto)
+    {
+        await Criar().ExecutarAsync(Texto(texto));
+
+        await _sleekFlow.Received(1).TransferirParaAtendimentoAsync(
+            Fone, Arg.Is<string>(c => c.Contains("Resposta não compreendida")), Arg.Any<CancellationToken>());
+        await _sleekFlow.DidNotReceive().EnviarBotoesAsync(
+            Arg.Any<EnvioBotoesRequest>(), Arg.Any<CancellationToken>());
     }
 }

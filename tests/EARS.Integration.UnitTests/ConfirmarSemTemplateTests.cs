@@ -1,11 +1,13 @@
 using EARS.Integration.Application.Abstractions;
 using EARS.Integration.Application.Dtos;
+using EARS.Integration.Application.Options;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
 using EARS.Integration.Domain.ValueObjects;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
@@ -45,7 +47,8 @@ public class ConfirmarSemTemplateTests
 
         return new ProcessarRespostaConfirmacaoUseCase(
             _agendamentos, _conversas, _relogio, _amplimed, _sleekFlow, _logs, _outbox,
-            cancelamento, _uow, NullLogger<ProcessarRespostaConfirmacaoUseCase>.Instance);
+            cancelamento, Options.Create(new RegrasClinicaOptions()), _uow,
+            NullLogger<ProcessarRespostaConfirmacaoUseCase>.Instance);
     }
 
     private static Agendamento Consulta(long id)

@@ -53,6 +53,7 @@ public class AgendamentoConfiguration : IEntityTypeConfiguration<Agendamento>
         // expiração saber de quem tirar sem consultar o SleekFlow contato a contato.
         b.Property(x => x.EtiquetaConfirmacaoAplicada).HasDefaultValue(false);
         b.Property(x => x.AcaoPendenteConfirmacao).HasMaxLength(12);
+        b.Property(x => x.RespostasNaoEntendidas).HasDefaultValue(0);
 
         b.HasIndex(x => x.IdIntegracao).IsUnique().HasFilter("\"IdIntegracao\" IS NOT NULL");
         b.HasIndex(x => new { x.Usuclin, x.IdAgendamentoAmplimed })

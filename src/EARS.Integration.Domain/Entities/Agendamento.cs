@@ -130,6 +130,27 @@ public class Agendamento : EntidadeBase
 
     public DateTimeOffset? AcaoPendenteEm { get; private set; }
 
+    /// <summary>
+    /// Respostas seguidas que não entendemos, na conversa da confirmação. Zera quando o
+    /// paciente responde algo que faz sentido; ao passar do limite, a recepção assume.
+    /// </summary>
+    public int RespostasNaoEntendidas { get; private set; }
+
+    public int RegistrarRespostaNaoEntendida()
+    {
+        RespostasNaoEntendidas++;
+        Tocar();
+        return RespostasNaoEntendidas;
+    }
+
+    public void ZerarRespostasNaoEntendidas()
+    {
+        if (RespostasNaoEntendidas == 0) return;
+
+        RespostasNaoEntendidas = 0;
+        Tocar();
+    }
+
     public void AguardarConfirmacaoDaAcao(string acao, DateTimeOffset agora)
     {
         AcaoPendenteConfirmacao = acao;

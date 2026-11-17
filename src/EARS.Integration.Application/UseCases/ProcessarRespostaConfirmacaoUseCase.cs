@@ -6,6 +6,7 @@ using EARS.Integration.Application.Options;
 using EARS.Integration.Domain.Entities;
 using EARS.Integration.Domain.Enums;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace EARS.Integration.Application.UseCases;
 
@@ -37,9 +38,12 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
     IMensagemLogRepository logs,
     IOutboxRepository outbox,
     CancelarAgendamentoUseCase cancelamento,
+    IOptions<RegrasClinicaOptions> clinica,
     IUnitOfWork uow,
     ILogger<ProcessarRespostaConfirmacaoUseCase> logger)
 {
+    private readonly RegrasClinicaOptions _regras = clinica.Value;
+
     public const string TipoOutboxStatus = "amplimed.alterar-status-agendamento";
     public const string TipoOutboxCancelamento = "amplimed.cancelar-agendamento";
 
@@ -157,6 +161,15 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
     /// </summary>
     private static readonly TimeSpan ValidadeDaPergunta = TimeSpan.FromHours(6);
 
+    /// <summary>
+    /// Respostas seguidas que não entendemos antes de passar para a recepção. Abaixo
+    /// disso o paciente continua no fluxo; sem limite, quem não consegue responder
+    /// ficaria preso pedindo desculpa ao bot.
+    /// </summary>
+    public const int MaximoDeRespostasNaoEntendidas = 3;
+
+    private const string DesculpaNaoEntendi = "Me desculpe, mas não entendi.";
+
     public const string BotaoSim = "acao_sim";
     public const string BotaoNao = "acao_nao";
 
@@ -174,6 +187,7 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
         if (pendente is not null && simNao is true)
         {
             agendamento.LimparAcaoPendente();
+            agendamento.ZerarRespostasNaoEntendidas();
             return AcaoParaResposta(pendente);
         }
 
@@ -181,7 +195,8 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
         {
             // Não, ou o Sim de uma pergunta que já venceu: volta ao começo.
             agendamento.LimparAcaoPendente();
-            await PerguntarOQueFazerAsync(agendamento, mensagem.Telefone, ct);
+            agendamento.ZerarRespostasNaoEntendidas();
+            await PerguntarOQueFazerAsync(agendamento, mensagem.Telefone, "Sem problemas!", ct);
             await RegistrarRecebidaAsync(agendamento, mensagem, ct);
             await uow.SalvarAsync(ct);
             return null;
@@ -191,19 +206,42 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
 
         if (resposta is RespostaConfirmacao.Confirmar or RespostaConfirmacao.Cancelar or RespostaConfirmacao.Remarcar)
         {
+            agendamento.ZerarRespostasNaoEntendidas();
             agendamento.AguardarConfirmacaoDaAcao(NomeDaAcao(resposta), agora);
-            await PerguntarSeTemCertezaAsync(agendamento, resposta, mensagem.Telefone, ct);
+            await PerguntarSeTemCertezaAsync(agendamento, resposta, mensagem.Telefone, null, ct);
             await RegistrarRecebidaAsync(agendamento, mensagem, ct);
             await uow.SalvarAsync(ct);
             return null;
         }
 
-        agendamento.LimparAcaoPendente();
-        return resposta;
+        // Não entendemos. Urgência e pedido de atendente vão direto para a recepção; o
+        // resto fica no fluxo: pede desculpa e repete a pergunta em que o paciente está.
+        var querHumano = _regras.MencionaUrgencia(mensagem.Texto) || _regras.PedeAtendente(mensagem.Texto);
+
+        if (querHumano
+            || agendamento.RegistrarRespostaNaoEntendida() >= MaximoDeRespostasNaoEntendidas)
+        {
+            agendamento.LimparAcaoPendente();
+            return resposta;
+        }
+
+        if (pendente is not null)
+        {
+            await PerguntarSeTemCertezaAsync(
+                agendamento, AcaoParaResposta(pendente), mensagem.Telefone, DesculpaNaoEntendi, ct);
+        }
+        else
+        {
+            await PerguntarOQueFazerAsync(agendamento, mensagem.Telefone, DesculpaNaoEntendi, ct);
+        }
+
+        await RegistrarRecebidaAsync(agendamento, mensagem, ct);
+        await uow.SalvarAsync(ct);
+        return null;
     }
 
     private async Task PerguntarSeTemCertezaAsync(
-        Agendamento agendamento, RespostaConfirmacao acao, string telefone, CancellationToken ct)
+        Agendamento agendamento, RespostaConfirmacao acao, string telefone, string? abertura, CancellationToken ct)
     {
         var verbo = acao switch
         {
@@ -214,15 +252,16 @@ public sealed class ProcessarRespostaConfirmacaoUseCase(
 
         await EnviarComBotoesOuTextoAsync(
             telefone,
-            $"Você deseja {verbo} a sua consulta de {Quando(agendamento)}?",
+            $"{(abertura is null ? "" : abertura + " ")}Você deseja {verbo} a sua consulta de {Quando(agendamento)}?",
             [new BotaoResposta(BotaoSim, "Sim"), new BotaoResposta(BotaoNao, "Não")],
             "Responda SIM ou NÃO.", ct);
     }
 
-    private Task PerguntarOQueFazerAsync(Agendamento agendamento, string telefone, CancellationToken ct) =>
+    private Task PerguntarOQueFazerAsync(
+        Agendamento agendamento, string telefone, string abertura, CancellationToken ct) =>
         EnviarComBotoesOuTextoAsync(
             telefone,
-            $"Sem problemas! O que você prefere fazer com a consulta de {Quando(agendamento)}?",
+            $"{abertura} O que você prefere fazer com a consulta de {Quando(agendamento)}?",
             [
                 new BotaoResposta("confirmar", "Confirmar"),
                 new BotaoResposta("cancelar", "Cancelar"),

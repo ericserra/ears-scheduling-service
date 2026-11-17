@@ -87,6 +87,11 @@ namespace EARS.Integration.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("RespondidoEm")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("RespostasNaoEntendidas")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTimeOffset?>("SincronizadoEm")
                         .HasColumnType("timestamp with time zone");
 
