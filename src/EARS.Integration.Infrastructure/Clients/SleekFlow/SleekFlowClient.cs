@@ -280,15 +280,18 @@ public sealed partial class SleekFlowClient(
         if (adicionar.Count == 0 && remover.Count == 0) return true;
 
         // O corpo é um array de contatos, e o telefone vai sem o "+".
-        var corpo = new[]
-        {
-            new Dictionary<string, object?>
+        // O WhatsApp pode entregar o celular brasileiro sem o nono dígito, e
+        // aí a SleekFlow mantém dois contatos para a mesma pessoa. A conversa
+        // fica num deles; se a etiqueta for só no outro, os filtros dos fluxos
+        // não a enxergam. Por isso a etiqueta vai nas duas grafias.
+        var corpo = VariacoesDoNonoDigito(telefone)
+            .Select(numero => new Dictionary<string, object?>
             {
-                ["phoneNumber"] = telefone,
+                ["phoneNumber"] = numero,
                 ["addLabels"] = adicionar,
                 ["removeLabels"] = remover,
-            },
-        };
+            })
+            .ToArray();
 
         try
         {
@@ -316,6 +319,23 @@ public sealed partial class SleekFlowClient(
             logger.LogError(ex, "Falha ao ajustar etiquetas de {Telefone}.", telefone);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Celular brasileiro (55 + DDD + 9 + 8 dígitos) devolve as duas grafias,
+    /// com e sem o nono dígito. Qualquer outro número volta como veio.
+    /// </summary>
+    internal static IReadOnlyList<string> VariacoesDoNonoDigito(string telefone)
+    {
+        var digitos = new string(telefone.Where(char.IsDigit).ToArray());
+
+        if (digitos.Length == 13 && digitos.StartsWith("55") && digitos[4] == '9')
+            return [digitos, digitos[..4] + digitos[5..]];
+
+        if (digitos.Length == 12 && digitos.StartsWith("55") && digitos[4] is >= '6' and <= '9')
+            return [digitos[..4] + "9" + digitos[4..], digitos];
+
+        return [telefone];
     }
 
     public Task<bool> MarcarAgendamentoEmCursoAsync(string telefone, CancellationToken ct = default) =>

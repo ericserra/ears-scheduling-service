@@ -117,6 +117,42 @@ public class SleekFlowClientTests
     }
 
     [Fact]
+    public async Task CelularComNonoDigitoEtiquetaAsDuasGrafias()
+    {
+        var fake = new HttpFake().Responder("{}");
+
+        await Criar(fake).MarcarAgendamentoEmCursoAsync("5551989234034");
+
+        var corpo = fake.Corpos[0];
+        corpo.Should().Contain("\"phoneNumber\":\"5551989234034\"");
+        corpo.Should().Contain("\"phoneNumber\":\"555189234034\"",
+            "o WhatsApp pode ter criado o contato sem o nono dígito");
+    }
+
+    [Fact]
+    public async Task CelularSemNonoDigitoTambemEtiquetaAGrafiaCompleta()
+    {
+        var fake = new HttpFake().Responder("{}");
+
+        await Criar(fake).MarcarAgendamentoEmCursoAsync("555189234034");
+
+        var corpo = fake.Corpos[0];
+        corpo.Should().Contain("\"phoneNumber\":\"555189234034\"");
+        corpo.Should().Contain("\"phoneNumber\":\"5551989234034\"");
+    }
+
+    [Fact]
+    public async Task FixoNaoGanhaVariacao()
+    {
+        var fake = new HttpFake().Responder("{}");
+
+        await Criar(fake).MarcarAgendamentoEmCursoAsync("555133334444");
+
+        fake.Corpos[0].Should().Contain("\"phoneNumber\":\"555133334444\"");
+        fake.Corpos[0].Split("phoneNumber").Length.Should().Be(2, "só um contato no array");
+    }
+
+    [Fact]
     public async Task LimparEtiquetaUsaRemoveLabels()
     {
         var fake = new HttpFake().Responder("{}");
