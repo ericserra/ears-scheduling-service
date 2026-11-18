@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using EARS.Integration.Application.Dtos;
 using EARS.Integration.Application.UseCases;
 using EARS.Integration.Domain.Enums;
+using EARS.Integration.Domain.ValueObjects;
 using EARS.Integration.Infrastructure.Clients;
 using Microsoft.Extensions.Options;
 
@@ -247,8 +248,13 @@ public static class WebhookEndpoints
         if (string.IsNullOrWhiteSpace(telefone)) return null;
         if (string.IsNullOrWhiteSpace(texto) && string.IsNullOrWhiteSpace(botao)) return null;
 
+        // O WhatsApp pode reportar o número sem o nono dígito; o cadastro guarda com ele.
+        var numero = Telefone.TryCreate(telefone, out var normalizado) && normalizado is not null
+            ? normalizado.Value
+            : telefone!;
+
         return new MensagemRecebida(
-            telefone!, contato, texto, botao, recebida ?? DateTimeOffset.UtcNow);
+            numero, contato, texto, botao, recebida ?? DateTimeOffset.UtcNow);
     }
 
     /// <summary>Primeiro nome de campo que existir e trouxer texto não vazio.</summary>
